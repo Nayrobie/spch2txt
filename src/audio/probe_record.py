@@ -5,7 +5,7 @@ import pyaudiowpatch as pyaudio
 Quick test: 10 seconds record from the default output (WASAPI loopback)
 
 How to run:
-    poetry run python src/probe_record.py
+    poetry run python src/audio/probe_record.py
 """
 
 DUR = 10

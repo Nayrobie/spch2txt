@@ -5,7 +5,7 @@ List all the audio devices detected in the Windows machine.
 Should detect WASAPI loopback devices.
 
 How to run:
-    poetry run python src/audio_devices.py
+    poetry run python src/audio/audio_devices.py
 """
 
 def list_devices():
