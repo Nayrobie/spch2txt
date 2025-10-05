@@ -4,7 +4,7 @@ import whisper
 Transcribe probe audio from 10 sec probe recording.
 
 How to run:
-    poetry run python src/probe_transcribe.py
+    poetry run python src/audio/probe_transcribe.py
 """
 
 import whisper
