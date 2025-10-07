@@ -1,5 +1,7 @@
 import wave
 import pyaudiowpatch as pyaudio
+import os
+from datetime import datetime
 
 """
 Quick test: 10 seconds record from the default microphone
@@ -12,6 +14,7 @@ DUR = 10
 RATE = 16000  # Lower rate for better compatibility with Whisper
 CH = 1  # Mono for microphone
 FRAMES = 1024
+OUTPUT_DIR = "src/saved_audio"
 
 print("Initializing audio...")
 pa = pyaudio.PyAudio()
@@ -21,7 +24,12 @@ default_input = pa.get_default_input_device_info()
 print(f"Using device: {default_input['name']}")
 print(f"Recording for {DUR} seconds...")
 
-wf = wave.open("out.wav", "wb")
+# Create output file in saved_audio directory
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+output_file = os.path.join(OUTPUT_DIR, f"test_record_{timestamp}.wav")
+
+wf = wave.open(output_file, "wb")
 wf.setnchannels(CH)
 wf.setsampwidth(pa.get_sample_size(pyaudio.paInt16))
 wf.setframerate(RATE)
@@ -48,4 +56,4 @@ wf.writeframes(b"".join(frames))
 stream.close()
 pa.terminate()
 wf.close()
-print("Saved to out.wav")
+print(f"Saved to {output_file}")

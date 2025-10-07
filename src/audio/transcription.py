@@ -5,7 +5,7 @@ Audio transcription functionality using OpenAI Whisper.
 import whisper
 import numpy as np
 import wave
-from typing import Dict, Optional
+from typing import Dict
 
 
 class AudioTranscriber:
@@ -45,7 +45,8 @@ class AudioTranscriber:
             # Load from file
             audio = self._load_wav_file(audio_input)
         elif isinstance(audio_input, np.ndarray):
-            audio = audio_input
+            # Ensure audio data is float32
+            audio = audio_input.astype(np.float32)
         elif isinstance(audio_input, bytes):
             # Convert bytes to numpy array
             audio = np.frombuffer(audio_input, dtype=np.int16).astype(np.float32) / 32768.0
