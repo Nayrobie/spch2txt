@@ -67,41 +67,58 @@ poetry run streamlit run src/ui/streamlit_app.py
 ## Testing & Development
 
 ### Quick Test (Recommended)
-Test the complete workflow - records 10 seconds and transcribes:
+Test the complete workflow - records 10 seconds and transcribes automatically:
 ```bash
 poetry run python tests/test_full_workflow.py
 ```
 
-### List Available Audio Devices
+### Available Test Scripts
+
+| Test Script | Purpose | Command |
+|------------|---------|----------|
+| `test_full_workflow.py` | Complete record + transcribe workflow | `poetry run python tests/test_full_workflow.py` |
+| `test_audio_devices.py` | List all audio devices | `poetry run python tests/test_audio_devices.py` |
+| `test_record.py` | Simple 10-second recording | `poetry run python tests/test_record.py` |
+| `test_transcribe.py` | Transcribe existing WAV file | `poetry run python tests/test_transcribe.py` |
+| `test_teams_audio.py` | Interactive Teams audio testing | `poetry run python tests/test_teams_audio.py` |
+
+### Individual Test Details
+
+#### List Available Audio Devices
 ```bash
 poetry run python tests/test_audio_devices.py
 ```
+Shows all available microphones, speakers, and loopback devices. Use this to find your device index.
 
-### Test Teams Audio (Interactive)
-```bash
-poetry run python tests/test_teams_audio.py
-```
-
-### Individual Component Tests
-
-**Test Recording Only (10 seconds)**:
+#### Test Recording Only
 ```bash
 poetry run python tests/test_record.py
 ```
+Records 10 seconds of audio and saves to `out.wav`.
 
-**Test Transcription Only**:
+#### Test Transcription Only
 ```bash
 poetry run python tests/test_transcribe.py
 ```
+Transcribes `out.wav` (run `test_record.py` first to create the audio file).
+
+#### Test Teams Audio (Interactive)
+```bash
+poetry run python tests/test_teams_audio.py
+```
+Interactive menu for testing different audio sources including Teams. Join a meeting first before running this test.
+
+### Testing Tips
+1. Start with `test_full_workflow.py` as it tests everything at once
+2. Use `test_audio_devices.py` to find your device index
+3. For Teams testing, join a meeting first, then run `test_teams_audio.py`
+4. All test scripts save audio files to the project root directory
 
 ### Code Formatting
 ```bash
 poetry run ruff check . --fix
 poetry run ruff format .
 ```
-
-### Documentation
-See `tests/README.md` for detailed testing instructions.
 
 ## Capturing Teams/Zoom Audio
 
