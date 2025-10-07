@@ -30,7 +30,7 @@ conda activate spch2txt
 pip install poetry
 
 # Install dependencies
-poetry install --no-root --with dev
+poetry install --no-root
 ```
 
 ### Running the Application
@@ -50,15 +50,6 @@ poetry run streamlit run src/ui/streamlit_app.py
 6. Click "Transcribe Audio"
 7. View and download the transcription
 
-### Advanced Version (`streamlit_advanced.py`)
-1. Load a Whisper model in the sidebar
-2. Select audio source (WASAPI loopback for system audio)
-3. Adjust transcription interval (how often to transcribe)
-4. Click "Start Recording"
-5. Watch live transcriptions appear automatically
-6. Click "Stop Recording" when done
-7. Download the full transcript
-
 **Additional Features:**
 - Upload pre-recorded audio files in the "Upload File" tab
 - View all transcriptions in the "History" tab
@@ -66,20 +57,53 @@ poetry run streamlit run src/ui/streamlit_app.py
 
 ## Testing & Development
 
-### List Available Audio Devices
+### Quick Test (Recommended)
+Test the complete workflow - records 10 seconds and transcribes automatically:
 ```bash
-poetry run python src/audio/audio_devices.py
+poetry run python tests/test_full_workflow.py
 ```
 
-### Test Recording (10 seconds)
-```bash
-poetry run python src/audio/probe_record.py
-```
+### Available Test Scripts
 
-### Test Transcription
+| Test Script | Purpose | Command |
+|------------|---------|----------|
+| `test_full_workflow.py` | Complete record + transcribe workflow | `poetry run python tests/test_full_workflow.py` |
+| `test_audio_devices.py` | List all audio devices | `poetry run python tests/test_audio_devices.py` |
+| `test_record.py` | Simple 10-second recording | `poetry run python tests/test_record.py` |
+| `test_transcribe.py` | Transcribe existing WAV file | `poetry run python tests/test_transcribe.py` |
+| `test_teams_audio.py` | Interactive Teams audio testing | `poetry run python tests/test_teams_audio.py` |
+
+### Individual Test Details
+
+#### List Available Audio Devices
 ```bash
-poetry run python src/audio/probe_transcribe.py
+poetry run python tests/test_audio_devices.py
 ```
+Shows all available microphones, speakers, and loopback devices. Use this to find your device index.
+
+#### Test Recording Only
+```bash
+poetry run python tests/test_record.py
+```
+Records 10 seconds of audio and saves to `out.wav`.
+
+#### Test Transcription Only
+```bash
+poetry run python tests/test_transcribe.py
+```
+Transcribes `out.wav` (run `test_record.py` first to create the audio file).
+
+#### Test Teams Audio (Interactive)
+```bash
+poetry run python tests/test_teams_audio.py
+```
+Interactive menu for testing different audio sources including Teams. Join a meeting first before running this test.
+
+### Testing Tips
+1. Start with `test_full_workflow.py` as it tests everything at once
+2. Use `test_audio_devices.py` to find your device index
+3. For Teams testing, join a meeting first, then run `test_teams_audio.py`
+4. All test scripts save audio files to the project root directory
 
 ### Code Formatting
 ```bash

@@ -12,8 +12,6 @@ import wave
 import whisper
 import tempfile
 import os
-from pathlib import Path
-import threading
 import time
 
 # Page configuration
@@ -229,8 +227,16 @@ with col1:
             help="Select the audio source (WASAPI loopback for system audio)"
         )
         
-        selected_device_index = int(selected_device_str.split(":")[0])
-        selected_device = devices[selected_device_index]
+        try:
+            selected_device_index = int(selected_device_str.split(":")[0])
+            # Find the device in the devices list that matches the selected index
+            selected_device = next((device for device in devices if device['index'] == selected_device_index), None)
+            if selected_device is None:
+                st.error(f"Could not find device with index {selected_device_index}")
+                st.stop()
+        except (ValueError, IndexError) as e:
+            st.error(f"Error selecting audio device: {e}")
+            st.stop()
         
         # Display device info
         with st.expander("Device Details"):
@@ -307,7 +313,7 @@ with col2:
                 # Clean up temp file
                 try:
                     os.unlink(tmp_filename)
-                except:
+                except Exception:
                     pass
     
     # Display transcription
