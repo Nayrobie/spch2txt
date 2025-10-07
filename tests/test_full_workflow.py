@@ -4,6 +4,7 @@ import whisper
 import numpy as np
 import os
 from datetime import datetime
+from scipy import signal
 
 """
 Complete test workflow: Interactive device selection, recording, and transcription.
@@ -70,10 +71,9 @@ def list_all_devices():
     
     # Display output devices (for reference)
     print("\nOUTPUT DEVICES:")
-    for dev in output_devices[:3]:  # Show only first 3 to avoid clutter
+    for dev in output_devices:
         print(f"  [{dev['index']:2d}] {dev['name']}")
-    if len(output_devices) > 3:
-        print(f"  ... and {len(output_devices) - 3} more")
+        print(f"       Channels: {dev['maxOutputChannels']}, Rate: {dev['defaultSampleRate']:.0f}Hz")
     
     pa.terminate()
     
@@ -84,50 +84,62 @@ def list_all_devices():
     
     return input_devices, loopback_devices, output_devices
 
-def record_audio(device_index, device_name, channels=2, rate=48000):
-    """Record audio from a specific device."""
+def record_audio(device_indices, device_names, channels_list, rates):
+    """Record audio from multiple devices simultaneously."""
     print("\nRECORDING AUDIO")
     print("-" * 50)
-    print(f"Device: {device_name}")
+    for i, name in enumerate(device_names):
+        print(f"Device {i+1}: {name}")
+        print(f"Settings: {rates[i]}Hz, {channels_list[i]} channel(s)")
     print(f"Duration: {DURATION} seconds")
-    print(f"Settings: {rate}Hz, {channels} channel(s)")
     print("-" * 80)
     
-    # Create output filename
+    # Create output filenames
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    output_file = os.path.join(OUTPUT_DIR, f"recording_{timestamp}.wav")
+    output_files = [
+        os.path.join(OUTPUT_DIR, f"recording_{timestamp}_device{i+1}.wav")
+        for i in range(len(device_indices))
+    ]
     
     # Ensure output directory exists
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     
     pa = pyaudio.PyAudio()
     
-    # Open wave file
-    wf = wave.open(output_file, "wb")
-    wf.setnchannels(channels)
-    wf.setsampwidth(pa.get_sample_size(pyaudio.paInt16))
-    wf.setframerate(rate)
+    # Open wave files
+    wfs = []
+    for i, output_file in enumerate(output_files):
+        wf = wave.open(output_file, "wb")
+        wf.setnchannels(channels_list[i])
+        wf.setsampwidth(pa.get_sample_size(pyaudio.paInt16))
+        wf.setframerate(rates[i])
+        wfs.append(wf)
     
     try:
-        # Open audio stream
-        stream = pa.open(
-            format=pyaudio.paInt16,
-            channels=channels,
-            rate=rate,
-            input=True,
-            frames_per_buffer=FRAMES_PER_BUFFER,
-            input_device_index=device_index
-        )
+        # Open audio streams
+        streams = []
+        frames_list = [[] for _ in device_indices]
+        
+        for device_index, channels, rate in zip(device_indices, channels_list, rates):
+            stream = pa.open(
+                format=pyaudio.paInt16,
+                channels=channels,
+                rate=rate,
+                input=True,
+                frames_per_buffer=FRAMES_PER_BUFFER,
+                input_device_index=device_index
+            )
+            streams.append(stream)
         
         print("Recording... (speak or play audio now)")
         
         # Record in chunks
-        num_chunks = int(rate / FRAMES_PER_BUFFER * DURATION)
-        frames = []
+        num_chunks = int(min(rates) / FRAMES_PER_BUFFER * DURATION)
         
         for i in range(num_chunks):
-            data = stream.read(FRAMES_PER_BUFFER)
-            frames.append(data)
+            for j, stream in enumerate(streams):
+                data = stream.read(FRAMES_PER_BUFFER)
+                frames_list[j].append(data)
             
             # Progress indicator
             if i % 15 == 0:
@@ -138,11 +150,19 @@ def record_audio(device_index, device_name, channels=2, rate=48000):
         print(f"[{'█' * 20}] 100%")
         
         # Save and cleanup
-        wf.writeframes(b"".join(frames))
-        stream.close()
+        for frames, wf in zip(frames_list, wfs):
+            wf.writeframes(b"".join(frames))
         
-        print(f"✓ Recording saved to {output_file}")
-        return output_file
+        for stream in streams:
+            stream.close()
+        
+        for wf in wfs:
+            wf.close()
+        
+        print("✓ Recordings saved:")
+        for file in output_files:
+            print(f"  - {file}")
+        return output_files
         
     except Exception as e:
         print(f"❌ Error recording: {e}")
@@ -150,6 +170,53 @@ def record_audio(device_index, device_name, channels=2, rate=48000):
     finally:
         pa.terminate()
         wf.close()
+
+def mix_wav_files(filepaths):
+    """Mix multiple WAV files into a single audio stream."""
+    audio_data = []
+    
+    # Load all audio files
+    for filepath in filepaths:
+        with wave.open(filepath, 'rb') as wf:
+            n_channels = wf.getnchannels()
+            sampwidth = wf.getsampwidth()
+            rate = wf.getframerate()
+            n_frames = wf.getnframes()
+            
+            audio = np.frombuffer(wf.readframes(n_frames), dtype=np.int16)
+            if n_channels == 2:
+                audio = audio.reshape(-1, 2).mean(axis=1)
+            
+            # Convert to float32 and normalize
+            audio = audio.astype(np.float32) / 32768.0
+            
+            # Resample if needed (using numpy for compatibility)
+            if rate != 48000:
+                duration = len(audio) / rate
+                target_length = int(duration * 48000)
+                audio = np.interp(
+                    np.linspace(0, len(audio), target_length, dtype=np.float32),
+                    np.arange(len(audio), dtype=np.float32),
+                    audio
+                )
+            
+            audio_data.append(audio)
+    
+    # Find the shortest length
+    min_length = min(len(audio) for audio in audio_data)
+    
+    # Trim all audio to the same length
+    audio_data = [audio[:min_length] for audio in audio_data]
+    
+    # Mix the audio streams (average them)
+    mixed_audio = np.mean(audio_data, axis=0)
+    
+    # Normalize the mixed audio
+    max_val = np.max(np.abs(mixed_audio))
+    if max_val > 0:
+        mixed_audio = mixed_audio / max_val
+    
+    return mixed_audio
 
 def load_wav_file(filepath):
     """Load a WAV file and convert to format expected by Whisper."""
@@ -242,34 +309,39 @@ def interactive_menu():
     # List all devices with guidance
     input_devs, loopback_devs, output_devs = list_all_devices()
     
-    # Get user choice
-    print("\nSELECT DEVICE:")
+    # Get user choices
+    print("\nSELECT DEVICES:")
     print("-" * 50)
-    
-    device_index = input("Enter device index number: ").strip()
+    print("First, select your microphone for voice input:")
+    mic_index = input("Enter microphone device index: ").strip()
+    print("\nNow, select the speakers/output device for Teams audio:")
+    speaker_index = input("Enter speaker device index: ").strip()
     
     try:
-        device_index = int(device_index)
+        mic_index = int(mic_index)
+        speaker_index = int(speaker_index)
         
         # Get device info
         pa = pyaudio.PyAudio()
-        device_info = pa.get_device_info_by_index(device_index)
+        mic_info = pa.get_device_info_by_index(mic_index)
+        speaker_info = pa.get_device_info_by_index(speaker_index)
         pa.terminate()
         
-        # Determine if it's a loopback device
-        is_loopback = 'loopback' in device_info['name'].lower()
+        # Validate microphone
+        if mic_info['maxInputChannels'] <= 0:
+            print("\n❌ Error: Selected microphone is not an input device")
+            print("Please select a device from the INPUT DEVICES section")
+            return
         
-        # Set appropriate settings
-        if is_loopback:
-            channels = 2
-            rate = int(device_info['defaultSampleRate'])
-        else:
-            channels = min(device_info['maxInputChannels'], 2)
-            rate = int(device_info['defaultSampleRate'])
+        # Set up device configurations
+        device_indices = [mic_index, speaker_index]
+        device_names = [mic_info['name'], speaker_info['name']]
+        channels_list = [min(mic_info['maxInputChannels'], 2), 2]
+        rates = [int(mic_info['defaultSampleRate']), int(speaker_info['defaultSampleRate'])]
         
-        print(f"\n✓ Selected: {device_info['name']}")
-        print(f"  Type: {'LOOPBACK (system audio)' if is_loopback else 'INPUT (microphone)'}")
-        print(f"  Settings: {rate}Hz, {channels} channel(s)")
+        print("\n✓ Selected devices:")
+        print(f"  Microphone: {mic_info['name']}")
+        print(f"  Speaker: {speaker_info['name']}")
         
         # Confirm
         confirm = input("\nProceed with recording? (y/n): ").strip().lower()
@@ -278,21 +350,44 @@ def interactive_menu():
             return
         
         # Record
-        audio_file = record_audio(device_index, device_info['name'], channels, rate)
+        audio_files = record_audio(device_indices, device_names, channels_list, rates)
         
-        if not audio_file:
+        if not audio_files:
             print("Recording failed.")
             return
         
         # Ask about transcription
-        transcribe = input("\nTranscribe this recording? (y/n): ").strip().lower()
+        transcribe = input("\nTranscribe recordings? (y/n): ").strip().lower()
         if transcribe == 'y':
-            result = transcribe_audio(audio_file)
+            print("\nMixing and transcribing audio...")
+            # Mix the audio files
+            mixed_audio = mix_wav_files(audio_files)
+            
+            # Create a temporary WAV file for the mixed audio
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            mixed_file = os.path.join(OUTPUT_DIR, f"recording_{timestamp}_mixed.wav")
+            
+            # Save mixed audio
+            with wave.open(mixed_file, 'wb') as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(48000)
+                # Convert back to int16
+                mixed_audio_int = (mixed_audio * 32767).astype(np.int16)
+                wf.writeframes(mixed_audio_int.tobytes())
+            
+            print("\nTranscribing mixed audio:")
+            result = transcribe_audio(mixed_file)
             display_results(result)
+            
+            # Clean up temporary file
+            os.remove(mixed_file)
         
         print("\n✓ TEST COMPLETE")
         print("-" * 50)
-        print(f"Audio saved: {audio_file}")
+        print("Audio files saved:")
+        for file in audio_files:
+            print(f"  - {file}")
         
     except ValueError:
         print("\n❌ Invalid device index. Please enter a number.")
