@@ -1,2 +1,5 @@
-.vscode
-.qodo
+.vscode/
+.qodo/
+.qodo_helper/
+
+saved_audio/

@@ -30,7 +30,7 @@ conda activate spch2txt
 pip install poetry
 
 # Install dependencies
-poetry install --no-root --with dev
+poetry install --no-root
 ```
 
 ### Running the Application
@@ -66,19 +66,32 @@ poetry run streamlit run src/ui/streamlit_app.py
 
 ## Testing & Development
 
+### Quick Test (Recommended)
+Test the complete workflow - records 10 seconds and transcribes:
+```bash
+poetry run python tests/test_full_workflow.py
+```
+
 ### List Available Audio Devices
 ```bash
-poetry run python src/audio/audio_devices.py
+poetry run python tests/test_audio_devices.py
 ```
 
-### Test Recording (10 seconds)
+### Test Teams Audio (Interactive)
 ```bash
-poetry run python src/audio/probe_record.py
+poetry run python tests/test_teams_audio.py
 ```
 
-### Test Transcription
+### Individual Component Tests
+
+**Test Recording Only (10 seconds)**:
 ```bash
-poetry run python src/audio/probe_transcribe.py
+poetry run python tests/test_record.py
+```
+
+**Test Transcription Only**:
+```bash
+poetry run python tests/test_transcribe.py
 ```
 
 ### Code Formatting
@@ -86,6 +99,9 @@ poetry run python src/audio/probe_transcribe.py
 poetry run ruff check . --fix
 poetry run ruff format .
 ```
+
+### Documentation
+See `tests/README.md` for detailed testing instructions.
 
 ## Capturing Teams/Zoom Audio
 
