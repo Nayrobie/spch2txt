@@ -50,15 +50,6 @@ poetry run streamlit run src/ui/streamlit_app.py
 6. Click "Transcribe Audio"
 7. View and download the transcription
 
-### Advanced Version (`streamlit_advanced.py`)
-1. Load a Whisper model in the sidebar
-2. Select audio source (WASAPI loopback for system audio)
-3. Adjust transcription interval (how often to transcribe)
-4. Click "Start Recording"
-5. Watch live transcriptions appear automatically
-6. Click "Stop Recording" when done
-7. Download the full transcript
-
 **Additional Features:**
 - Upload pre-recorded audio files in the "Upload File" tab
 - View all transcriptions in the "History" tab
