@@ -13,7 +13,7 @@ dependencies = [
     "pyaudiowpatch (>=0.2.12.7,<0.3.0.0) ; sys_platform == \"win32\"",
     "streamlit (>=1.50.0,<2.0.0)",
     "openai-whisper (>=20250625,<20250626)",
-    "ffmpeg (>=1.4,<2.0)"
+    "ffmpeg (>=1.4,<2.0)",
 ]
 
 

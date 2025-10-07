@@ -4,7 +4,6 @@ import whisper
 import numpy as np
 import os
 from datetime import datetime
-from scipy import signal
 
 """
 Complete test workflow: Interactive device selection, recording, and transcription.
@@ -169,7 +168,6 @@ def record_audio(device_indices, device_names, channels_list, rates):
         return None
     finally:
         pa.terminate()
-        wf.close()
 
 def mix_wav_files(filepaths):
     """Mix multiple WAV files into a single audio stream."""
@@ -179,7 +177,6 @@ def mix_wav_files(filepaths):
     for filepath in filepaths:
         with wave.open(filepath, 'rb') as wf:
             n_channels = wf.getnchannels()
-            sampwidth = wf.getsampwidth()
             rate = wf.getframerate()
             n_frames = wf.getnframes()
             
