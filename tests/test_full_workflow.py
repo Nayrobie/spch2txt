@@ -21,9 +21,8 @@ OUTPUT_DIR = "src/saved_audio"
 
 def list_all_devices():
     """List all audio devices with categorization and guidance."""
-    print("="*80)
-    print("AVAILABLE AUDIO DEVICES")
-    print("="*80)
+    print("\nAVAILABLE AUDIO DEVICES")
+    print("-" * 50)
     
     pa = pyaudio.PyAudio()
     
@@ -52,8 +51,7 @@ def list_all_devices():
             output_devices.append(device_info)
     
     # Display input devices (microphones)
-    print("\nINPUT DEVICES")
-    print("-" * 80)
+    print("\nINPUT DEVICES:")
     if input_devices:
         for dev in input_devices:
             print(f"  [{dev['index']:2d}] {dev['name']}")
@@ -62,8 +60,7 @@ def list_all_devices():
         print("  No input devices found")
     
     # Display loopback devices (system audio)
-    print("\nLOOPBACK DEVICES (System Audio - captures speaker & Teams audio):")
-    print("-" * 80)
+    print("\nLOOPBACK DEVICES (System Audio):")
     if loopback_devices:
         for dev in loopback_devices:
             print(f"  [{dev['index']:2d}] {dev['name']}")
@@ -73,7 +70,6 @@ def list_all_devices():
     
     # Display output devices (for reference)
     print("\nOUTPUT DEVICES:")
-    print("-" * 80)
     for dev in output_devices[:3]:  # Show only first 3 to avoid clutter
         print(f"  [{dev['index']:2d}] {dev['name']}")
     if len(output_devices) > 3:
@@ -82,19 +78,16 @@ def list_all_devices():
     pa.terminate()
     
     # Guidance
-    print("\n" + "="*80)
-    print("DEVICE SELECTION GUIDE:")
-    print("Select a microphone (input device) to only record your voice.")
-    print("Select a loopback device to record the whole audio system (e.g., speakers, Teams calls).")
-    print("="*80)
+    print("\nGUIDE:")
+    print("- Select microphone for voice recording")
+    print("- Select loopback device for system audio (Teams/speakers)")
     
     return input_devices, loopback_devices, output_devices
 
 def record_audio(device_index, device_name, channels=2, rate=48000):
     """Record audio from a specific device."""
-    print("\n" + "="*80)
-    print("RECORDING AUDIO")
-    print("="*80)
+    print("\nRECORDING AUDIO")
+    print("-" * 50)
     print(f"Device: {device_name}")
     print(f"Duration: {DURATION} seconds")
     print(f"Settings: {rate}Hz, {channels} channel(s)")
@@ -227,13 +220,8 @@ def transcribe_audio(filepath):
 
 def display_results(result):
     """Display transcription results."""
-    print("\n" + "="*80)
-    print("TRANSCRIPTION RESULTS")
-    print("="*80)
-    
-    # Full transcription
-    print("\n=Full Transcription:")
-    print("-" * 80)
+    print("\nTRANSCRIPTION RESULTS")
+    print("-" * 50)
     if result["text"].strip():
         print(result["text"])
     else:
@@ -248,19 +236,15 @@ def display_results(result):
 
 def interactive_menu():
     """Interactive menu for device selection and recording."""
-    print("\n" + "="*80)
-    print("FULL WORKFLOW TEST - RECORD & TRANSCRIBE")
-    print("="*80)
-    print(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print("="*80)
+    print("\nSPEECH TO TEXT - RECORD & TRANSCRIBE")
+    print(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
     # List all devices with guidance
     input_devs, loopback_devs, output_devs = list_all_devices()
     
     # Get user choice
-    print("\n" + "="*80)
-    print("SELECT DEVICE:")
-    print("="*80)
+    print("\nSELECT DEVICE:")
+    print("-" * 50)
     
     device_index = input("Enter device index number: ").strip()
     
@@ -306,9 +290,8 @@ def interactive_menu():
             result = transcribe_audio(audio_file)
             display_results(result)
         
-        print("\n" + "="*80)
-        print("✓ TEST COMPLETE")
-        print("="*80)
+        print("\n✓ TEST COMPLETE")
+        print("-" * 50)
         print(f"Audio saved: {audio_file}")
         
     except ValueError:
