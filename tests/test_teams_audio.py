@@ -54,14 +54,14 @@ def list_all_devices():
             output_devices.append(device_info)
     
     # Display input devices
-    print("\n📥 INPUT DEVICES (Microphones):")
+    print("\nINPUT DEVICES (Microphones):")
     print("-" * 70)
     for dev in input_devices:
         print(f"  [{dev['index']}] {dev['name']}")
         print(f"      Channels: {dev['maxInputChannels']}, Rate: {dev['defaultSampleRate']:.0f}Hz")
     
     # Display loopback devices
-    print("\n🔄 LOOPBACK DEVICES (System Audio Capture):")
+    print("\nLOOPBACK DEVICES (System Audio Capture):")
     print("-" * 70)
     if loopback_devices:
         for dev in loopback_devices:
@@ -71,7 +71,7 @@ def list_all_devices():
         print("  No loopback devices found")
     
     # Display output devices
-    print("\n📤 OUTPUT DEVICES (Speakers):")
+    print("\nOUTPUT DEVICES (Speakers):")
     print("-" * 70)
     for dev in output_devices:
         print(f"  [{dev['index']}] {dev['name']}")
@@ -80,7 +80,7 @@ def list_all_devices():
     pa.terminate()
     
     print("\n" + "="*70)
-    print("💡 TIPS FOR TEAMS AUDIO:")
+    print("TIPS FOR TEAMS AUDIO:")
     print("="*70)
     print("1. During a Teams call, look for devices with 'Teams' in the name")
     print("2. Loopback devices capture ALL system audio (including Teams)")
@@ -118,7 +118,7 @@ def record_from_device(device_index, device_name, output_file="teams_test.wav"):
             input_device_index=device_index
         )
         
-        print("🎤 Recording... (speak or play Teams audio)")
+        print("Recording... (speak or play Teams audio)")
         
         # Record
         num_chunks = int(RATE / FRAMES_PER_BUFFER * DURATION)
@@ -139,7 +139,7 @@ def record_from_device(device_index, device_name, output_file="teams_test.wav"):
         wf.writeframes(b"".join(frames))
         stream.close()
         
-        print(f"✓ Recording saved to {output_file}")
+        print(f"Recording saved to {output_file}")
         return output_file
         
     except Exception as e:
@@ -168,7 +168,7 @@ def quick_transcribe(audio_file):
         print("Transcribing...")
         result = model.transcribe(audio, language="en", verbose=False)
         
-        print("\n📝 Transcription:")
+        print("\nTranscription:")
         print("-" * 70)
         print(result["text"])
         print("-" * 70)
@@ -207,7 +207,7 @@ def interactive_menu():
         default_input = pa.get_default_input_device_info()
         pa.terminate()
         
-        print(f"\n✓ Using default microphone: {default_input['name']}")
+        print(f"\nUsing default microphone: {default_input['name']}")
         audio_file = record_from_device(default_input['index'], default_input['name'])
         
         if audio_file:
@@ -219,7 +219,7 @@ def interactive_menu():
         # Loopback device
         if loopback_devs:
             device = loopback_devs[0]
-            print(f"\n✓ Using loopback device: {device['name']}")
+            print(f"\nUsing loopback device: {device['name']}")
             audio_file = record_from_device(device['index'], device['name'])
             
             if audio_file:
@@ -238,7 +238,7 @@ def interactive_menu():
             device_info = pa.get_device_info_by_index(device_index)
             pa.terminate()
             
-            print(f"\n✓ Using device: {device_info['name']}")
+            print(f"\nUsing device: {device_info['name']}")
             audio_file = record_from_device(device_index, device_info['name'])
             
             if audio_file:
@@ -249,7 +249,7 @@ def interactive_menu():
             print(f"\n❌ Invalid device index: {e}")
     
     elif choice == "4":
-        print("\n✓ Device list complete. Exiting.")
+        print("\nDevice list complete. Exiting.")
     
     else:
         print("\n❌ Invalid choice")
@@ -262,7 +262,7 @@ if __name__ == "__main__":
     try:
         interactive_menu()
     except KeyboardInterrupt:
-        print("\n\n⚠️  Test interrupted by user")
+        print("\n\n❌ Test interrupted by user")
     except Exception as e:
         print(f"\n\n❌ Error: {e}")
         import traceback

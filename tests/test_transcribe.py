@@ -58,7 +58,7 @@ if not os.path.exists("out.wav"):
 print("Loading audio file...")
 try:
     audio = load_wav_file("out.wav")
-    print(f"✓ Audio loaded: {len(audio)/16000:.1f} seconds")
+    print(f"Audio loaded: {len(audio)/16000:.1f} seconds")
 except Exception as e:
     print(f"❌ Error loading audio: {e}")
     exit(1)

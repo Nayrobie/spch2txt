@@ -31,7 +31,6 @@ def record_audio():
     default_input = pa.get_default_input_device_info()
     print(f"Using device: {default_input['name']}")
     print(f"Recording for {DURATION} seconds...")
-    print("🎤 Please speak now!")
     
     # Open wave file
     wf = wave.open(OUTPUT_FILE, "wb")
@@ -135,14 +134,14 @@ def display_results(result):
     print("="*60)
     
     # Full transcription
-    print("\n📝 Full Transcription:")
+    print("\nFull Transcription:")
     print("-" * 60)
     print(result["text"])
     print("-" * 60)
     
     # Segments (with timestamps)
     if "segments" in result and len(result["segments"]) > 0:
-        print("\n⏱️  Timestamped Segments:")
+        print("\nTimestamped Segments:")
         print("-" * 60)
         for i, segment in enumerate(result["segments"], 1):
             start = segment["start"]
@@ -153,7 +152,7 @@ def display_results(result):
     
     # Language detection
     if "language" in result:
-        print(f"\n🌍 Detected Language: {result['language']}")
+        print(f"\nDetected Language: {result['language']}")
     
     print("\n" + "="*60)
 
@@ -175,11 +174,11 @@ def main():
         # Step 3: Display
         display_results(result)
         
-        print("\n��� Test completed successfully!")
-        print(f"📁 Audio file saved as: {audio_file}")
+        print("\nTest completed successfully!")
+        print(f"Audio file saved as: {audio_file}")
         
     except KeyboardInterrupt:
-        print("\n\n⚠️  Test interrupted by user")
+        print("\n\nTest interrupted by user")
     except Exception as e:
         print(f"\n\n❌ Error: {e}")
         import traceback
