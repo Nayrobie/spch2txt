@@ -3,6 +3,9 @@ import pyaudiowpatch as pyaudio
 import whisper
 import numpy as np
 import os
+import time
+import threading
+import queue
 from datetime import datetime
 
 """
@@ -83,8 +86,46 @@ def list_all_devices():
     
     return input_devices, loopback_devices, output_devices
 
+def record_stream_thread(stream, device_name, is_loopback, channels, num_chunks, frames_queue, stop_event):
+    """Thread function to record from a single stream."""
+    chunk_count = 0
+    silence = b'\x00' * (FRAMES_PER_BUFFER * 2 * channels)
+    consecutive_errors = 0
+    max_consecutive_errors = 50  # Stop after 50 consecutive errors
+    
+    while chunk_count < num_chunks and not stop_event.is_set():
+        try:
+            # For loopback devices, check if stream has data available
+            # If stream.read() blocks, it means no audio is playing
+            if is_loopback and stream.get_read_available() < FRAMES_PER_BUFFER:
+                # No data available, add silence and wait a bit
+                frames_queue.put(silence)
+                chunk_count += 1
+                consecutive_errors = 0
+                time.sleep(0.02)  # Small delay to avoid busy waiting
+                continue
+            
+            # Read audio data
+            data = stream.read(FRAMES_PER_BUFFER, exception_on_overflow=False)
+            frames_queue.put(data)
+            chunk_count += 1
+            consecutive_errors = 0
+            
+        except Exception as e:
+            # On error, append silence and continue
+            consecutive_errors += 1
+            frames_queue.put(silence)
+            chunk_count += 1
+            
+            # If too many consecutive errors, something is wrong
+            if consecutive_errors >= max_consecutive_errors:
+                print(f"\n  ⚠ Warning: Too many errors reading from {device_name}, stopping thread")
+                break
+            
+            time.sleep(0.01)
+
 def record_audio(device_indices, device_names, channels_list, rates, duration=None, stop_flag=None):
-    """Record audio from multiple devices simultaneously.
+    """Record audio from multiple devices simultaneously using threads.
     
     Args:
         device_indices: List of device indices
@@ -103,6 +144,13 @@ def record_audio(device_indices, device_names, channels_list, rates, duration=No
         print(f"Duration: {duration} seconds")
     else:
         print("Duration: Unlimited (stop manually)")
+    
+    # Determine which devices are loopback
+    is_loopback = ['loopback' in name.lower() for name in device_names]
+    for i, name in enumerate(device_names):
+        if is_loopback[i]:
+            print(f"  ⚠ Device {i+1} is loopback - will only capture if audio is playing!")
+    
     print("-" * 80)
     
     # Create output filenames
@@ -117,104 +165,187 @@ def record_audio(device_indices, device_names, channels_list, rates, duration=No
     
     pa = pyaudio.PyAudio()
     
-    # Open wave files
-    wfs = []
-    for i, output_file in enumerate(output_files):
-        wf = wave.open(output_file, "wb")
-        wf.setnchannels(channels_list[i])
-        wf.setsampwidth(pa.get_sample_size(pyaudio.paInt16))
-        wf.setframerate(rates[i])
-        wfs.append(wf)
-    
     try:
         # Open audio streams
         streams = []
-        frames_list = [[] for _ in device_indices]
         
-        for device_index, channels, rate in zip(device_indices, channels_list, rates):
-            stream = pa.open(
-                format=pyaudio.paInt16,
-                channels=channels,
-                rate=rate,
-                input=True,
-                frames_per_buffer=FRAMES_PER_BUFFER,
-                input_device_index=device_index
+        for i, (device_index, channels, rate) in enumerate(zip(device_indices, channels_list, rates)):
+            try:
+                stream = pa.open(
+                    format=pyaudio.paInt16,
+                    channels=channels,
+                    rate=rate,
+                    input=True,
+                    frames_per_buffer=FRAMES_PER_BUFFER,
+                    input_device_index=device_index
+                )
+                streams.append(stream)
+                print(f"✓ Opened stream for device {i+1}: {device_names[i]}")
+            except Exception as e:
+                print(f"❌ Failed to open stream for device {i+1}: {e}")
+                # Close any opened streams
+                for s in streams:
+                    s.close()
+                pa.terminate()
+                return None
+        
+        print("\nRecording... (speak or play audio now)")
+        
+        # Calculate number of chunks needed for each device
+        num_chunks_per_device = [int(rate * duration / FRAMES_PER_BUFFER) for rate in rates]
+        
+        # Create queues and threads for each stream
+        queues = [queue.Queue() for _ in device_indices]
+        stop_event = threading.Event()
+        threads = []
+        
+        for i, (stream, name, is_loop, channels, num_chunks) in enumerate(
+            zip(streams, device_names, is_loopback, channels_list, num_chunks_per_device)
+        ):
+            thread = threading.Thread(
+                target=record_stream_thread,
+                args=(stream, name, is_loop, channels, num_chunks, queues[i], stop_event)
             )
-            streams.append(stream)
+            thread.daemon = True
+            thread.start()
+            threads.append(thread)
         
-        print("Recording... (speak or play audio now)")
+        # Monitor progress
+        start_time = time.time()
+        max_chunks = max(num_chunks_per_device)
         
-        # Record in chunks
-        if duration:
-            num_chunks = int(min(rates) / FRAMES_PER_BUFFER * duration)
-            chunks_range = range(num_chunks)
-        else:
-            chunks_range = iter(int, 1)  # Infinite iterator
-        
-        chunk_count = 0
-        for i in chunks_range:
-            if stop_flag and stop_flag.value:
-                break
+        try:
+            while any(t.is_alive() for t in threads):
+                elapsed = time.time() - start_time
+                progress = min(100, (elapsed / duration) * 100) if duration else 0
                 
-            for j, stream in enumerate(streams):
-                data = stream.read(FRAMES_PER_BUFFER)
-                frames_list[j].append(data)
-            
-            chunk_count += 1
-            # Progress indicator
-            if duration:
-                if i % 15 == 0:
-                    progress = (i / num_chunks) * 100
+                if duration:
                     bars = int(progress / 5)
                     print(f"[{'█' * bars}{' ' * (20-bars)}] {progress:.0f}%", end='\r')
-            else:
-                if chunk_count % 30 == 0:  # Show recording duration every ~second
-                    seconds = int(chunk_count * FRAMES_PER_BUFFER / min(rates))
-                    print(f"Recording: {seconds}s", end='\r')
+                
+                time.sleep(0.1)
+                
+                # Check if duration exceeded
+                if duration and elapsed >= duration:
+                    stop_event.set()
+                    break
+        except KeyboardInterrupt:
+            print("\nRecording stopped by user")
+            stop_event.set()
+        
+        # Wait for all threads to finish
+        print("\nWaiting for recording threads to complete...")
+        for i, thread in enumerate(threads):
+            thread.join(timeout=2.0)
+            if thread.is_alive():
+                print(f"  Warning: Thread {i+1} still running after timeout (likely loopback with no audio)")
+        
+        # Force stop any remaining threads
+        stop_event.set()
         
         print(f"[{'█' * 20}] 100%")
+        print("\nSaving recordings...")
         
-        # Save and cleanup
-        for frames, wf in zip(frames_list, wfs):
-            wf.writeframes(b"".join(frames))
+        # Collect frames from queues and save to files
+        for i, (output_file, q) in enumerate(zip(output_files, queues)):
+            print(f"  Processing device {i+1} queue (size: {q.qsize()})...")
+            frames = []
+            while not q.empty():
+                try:
+                    frames.append(q.get_nowait())
+                except:
+                    break
+            
+            print(f"  Collected {len(frames)} chunks from device {i+1}")
+            
+            # If no frames collected, create a silent audio file
+            if len(frames) == 0:
+                print(f"  Warning: No audio data collected from device {i+1}, creating silent file...")
+                # Create silent audio for the duration
+                num_samples = int(rates[i] * duration * channels_list[i])
+                frames = [b'\x00' * (FRAMES_PER_BUFFER * 2 * channels_list[i])] * int(num_samples / (FRAMES_PER_BUFFER * channels_list[i]))
+            
+            # Save to WAV file
+            print(f"  Saving to {output_file}...")
+            try:
+                with wave.open(output_file, 'wb') as wf:
+                    wf.setnchannels(channels_list[i])
+                    wf.setsampwidth(pa.get_sample_size(pyaudio.paInt16))
+                    wf.setframerate(rates[i])
+                    wf.writeframes(b"".join(frames))
+                print(f"  ✓ Saved device {i+1}")
+            except Exception as e:
+                print(f"  ❌ Error saving device {i+1}: {e}")
         
-        for stream in streams:
-            stream.close()
+        # Close streams
+        print("\nClosing audio streams...")
+        for i, stream in enumerate(streams):
+            try:
+                # Stop the stream first to unblock any pending reads
+                if stream.is_active():
+                    stream.stop_stream()
+                stream.close()
+                print(f"  ✓ Closed stream {i+1}")
+            except Exception as e:
+                print(f"  ⚠ Error closing stream {i+1}: {e}")
         
-        for wf in wfs:
-            wf.close()
-        
-        print("✓ Recordings saved:")
+        print("\n✓ Recordings saved:")
         for file in output_files:
             print(f"  - {file}")
+        
         return output_files
         
     except Exception as e:
         print(f"❌ Error recording: {e}")
+        import traceback
+        traceback.print_exc()
         return None
     finally:
         pa.terminate()
 
 def mix_wav_files(filepaths):
     """Mix multiple WAV files into a single audio stream."""
+    import sys
     audio_data = []
     
     # Load all audio files
-    for filepath in filepaths:
+    for i, filepath in enumerate(filepaths):
+        # Normalize path to avoid double backslash issues
+        filepath = os.path.normpath(filepath)
+        
+        # Check if file exists
+        if not os.path.exists(filepath):
+            print(f"  ⚠ Warning: File not found: {filepath}", flush=True)
+            print(f"  Skipping file {i+1}", flush=True)
+            continue
+        
+        print(f"  Loading file {i+1}/{len(filepaths)}: {filepath}", flush=True)
+        sys.stdout.flush()
+        
         with wave.open(filepath, 'rb') as wf:
             n_channels = wf.getnchannels()
             rate = wf.getframerate()
             n_frames = wf.getnframes()
             
+            print(f"    Channels: {n_channels}, Rate: {rate}Hz, Frames: {n_frames}", flush=True)
+            sys.stdout.flush()
+            
             audio = np.frombuffer(wf.readframes(n_frames), dtype=np.int16)
+            print(f"    Loaded {len(audio)} samples", flush=True)
+            sys.stdout.flush()
+            
             if n_channels == 2:
                 audio = audio.reshape(-1, 2).mean(axis=1)
+                print(f"    Converted stereo to mono: {len(audio)} samples", flush=True)
+                sys.stdout.flush()
             
             # Convert to float32 and normalize
             audio = audio.astype(np.float32) / 32768.0
             
             # Resample if needed (using numpy for compatibility)
             if rate != 48000:
+                print(f"    Resampling from {rate}Hz to 48000Hz...", flush=True)
+                sys.stdout.flush()
                 duration = len(audio) / rate
                 target_length = int(duration * 48000)
                 audio = np.interp(
@@ -222,33 +353,57 @@ def mix_wav_files(filepaths):
                     np.arange(len(audio), dtype=np.float32),
                     audio
                 )
+                print(f"    Resampled to {len(audio)} samples", flush=True)
+                sys.stdout.flush()
             
             audio_data.append(audio)
+            print(f"  ✓ File {i+1} loaded", flush=True)
+            sys.stdout.flush()
+    
+    # Check if we have any audio data
+    if not audio_data:
+        print("  ❌ No audio files could be loaded!", flush=True)
+        sys.stdout.flush()
+        # Return empty audio
+        return np.zeros(48000, dtype=np.float32)
+    
+    print("  Mixing audio streams...", flush=True)
+    sys.stdout.flush()
     
     # Find the longest length
     max_length = max(len(audio) for audio in audio_data)
+    print(f"  Max length: {max_length} samples ({max_length/48000:.1f}s)", flush=True)
+    sys.stdout.flush()
     
     # Pad shorter audio with zeros to match the longest length
     padded_audio = []
-    for audio in audio_data:
+    for i, audio in enumerate(audio_data):
         if len(audio) < max_length:
             # Pad with zeros (silence) to match longest file
             padding = np.zeros(max_length - len(audio), dtype=np.float32)
             padded_audio.append(np.concatenate([audio, padding]))
+            print(f"  Padded audio {i+1} from {len(audio)} to {max_length} samples", flush=True)
+            sys.stdout.flush()
         else:
             padded_audio.append(audio)
     
     # Mix the audio streams (average them where both exist, keep single stream otherwise)
+    print("  Averaging audio streams...", flush=True)
+    sys.stdout.flush()
     mixed_audio = np.zeros(max_length, dtype=np.float32)
     for audio in padded_audio:
         mixed_audio += audio
     mixed_audio /= len(audio_data)  # Average where streams overlap
     
     # Normalize the mixed audio
+    print("  Normalizing mixed audio...", flush=True)
+    sys.stdout.flush()
     max_val = np.max(np.abs(mixed_audio))
     if max_val > 0:
         mixed_audio = mixed_audio / max_val
     
+    print("  ✓ Mixing complete", flush=True)
+    sys.stdout.flush()
     return mixed_audio
 
 def load_wav_file(filepath):
@@ -347,17 +502,17 @@ def interactive_menu():
     print("-" * 50)
     print("First, select your microphone for voice input:")
     mic_index = input("Enter microphone device index: ").strip()
-    print("\nNow, select the speakers/output device for Teams audio:")
-    speaker_index = input("Enter speaker device index: ").strip()
+    print("\nNow, select the LOOPBACK device for Teams/system audio (from the LOOPBACK DEVICES section above):")
+    loopback_index = input("Enter loopback device index: ").strip()
     
     try:
         mic_index = int(mic_index)
-        speaker_index = int(speaker_index)
+        loopback_index = int(loopback_index)
         
         # Get device info
         pa = pyaudio.PyAudio()
         mic_info = pa.get_device_info_by_index(mic_index)
-        speaker_info = pa.get_device_info_by_index(speaker_index)
+        loopback_info = pa.get_device_info_by_index(loopback_index)
         pa.terminate()
         
         # Validate microphone
@@ -366,15 +521,21 @@ def interactive_menu():
             print("Please select a device from the INPUT DEVICES section")
             return
         
+        # Validate loopback (must be input-capable for capture)
+        if loopback_info['maxInputChannels'] <= 0:
+            print("\n❌ Error: Selected device is not an input (loopback) device")
+            print("Please select a device from the LOOPBACK DEVICES section")
+            return
+        
         # Set up device configurations
-        device_indices = [mic_index, speaker_index]
-        device_names = [mic_info['name'], speaker_info['name']]
-        channels_list = [min(mic_info['maxInputChannels'], 2), 2]
-        rates = [int(mic_info['defaultSampleRate']), int(speaker_info['defaultSampleRate'])]
+        device_indices = [mic_index, loopback_index]
+        device_names = [mic_info['name'], loopback_info['name']]
+        channels_list = [min(mic_info['maxInputChannels'], 2), min(loopback_info['maxInputChannels'], 2)]
+        rates = [int(mic_info['defaultSampleRate']), int(loopback_info['defaultSampleRate'])]
         
         print("\n✓ Selected devices:")
         print(f"  Microphone: {mic_info['name']}")
-        print(f"  Speaker: {speaker_info['name']}")
+        print(f"  Loopback:   {loopback_info['name']}")
         
         # Confirm
         confirm = input("\nProceed with recording? (y/n): ").strip().lower()
@@ -382,39 +543,57 @@ def interactive_menu():
             print("Recording cancelled.")
             return
         
-        # Record
-        audio_files = record_audio(device_indices, device_names, channels_list, rates)
+        # Record for configured duration
+        audio_files = record_audio(device_indices, device_names, channels_list, rates, duration=DURATION)
         
         if not audio_files:
             print("Recording failed.")
             return
         
         # Ask about transcription
+        import sys
+        print("", flush=True)
+        sys.stdout.flush()
         transcribe = input("\nTranscribe recordings? (y/n): ").strip().lower()
         if transcribe == 'y':
-            print("\nMixing and transcribing audio...")
-            # Mix the audio files
-            mixed_audio = mix_wav_files(audio_files)
+            print("\n" + "="*80)
+            print("MIXING AND TRANSCRIBING AUDIO")
+            print("="*80)
             
-            # Create a temporary WAV file for the mixed audio
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            mixed_file = os.path.join(OUTPUT_DIR, f"recording_{timestamp}_mixed.wav")
-            
-            # Save mixed audio
-            with wave.open(mixed_file, 'wb') as wf:
-                wf.setnchannels(1)
-                wf.setsampwidth(2)
-                wf.setframerate(48000)
-                # Convert back to int16
-                mixed_audio_int = (mixed_audio * 32767).astype(np.int16)
-                wf.writeframes(mixed_audio_int.tobytes())
-            
-            print("\nTranscribing mixed audio:")
-            result = transcribe_audio(mixed_file)
-            display_results(result)
-            
-            # Clean up temporary file
-            os.remove(mixed_file)
+            try:
+                # Mix the audio files
+                print("Mixing audio files...")
+                mixed_audio = mix_wav_files(audio_files)
+                print(f"✓ Mixed audio length: {len(mixed_audio)/48000:.1f} seconds")
+                
+                # Create a temporary WAV file for the mixed audio
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                mixed_file = os.path.join(OUTPUT_DIR, f"recording_{timestamp}_mixed.wav")
+                
+                # Save mixed audio
+                print(f"Saving mixed audio to: {mixed_file}")
+                with wave.open(mixed_file, 'wb') as wf:
+                    wf.setnchannels(1)
+                    wf.setsampwidth(2)
+                    wf.setframerate(48000)
+                    # Convert back to int16
+                    mixed_audio_int = (mixed_audio * 32767).astype(np.int16)
+                    wf.writeframes(mixed_audio_int.tobytes())
+                print("✓ Mixed audio saved")
+                
+                # Transcribe
+                result = transcribe_audio(mixed_file)
+                display_results(result)
+                
+                # Clean up temporary file
+                print("\nCleaning up temporary files...")
+                os.remove(mixed_file)
+                print("✓ Cleanup complete")
+                
+            except Exception as e:
+                print(f"\n❌ Error during transcription: {e}")
+                import traceback
+                traceback.print_exc()
         
         print("\n✓ TEST COMPLETE")
         print("-" * 50)
