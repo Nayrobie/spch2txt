@@ -91,21 +91,12 @@ def record_stream_thread(stream, device_name, is_loopback, channels, num_chunks,
     chunk_count = 0
     silence = b'\x00' * (FRAMES_PER_BUFFER * 2 * channels)
     consecutive_errors = 0
-    max_consecutive_errors = 50  # Stop after 50 consecutive errors
+    max_consecutive_errors = 100  # Allow more errors for loopback devices
     
     while chunk_count < num_chunks and not stop_event.is_set():
         try:
-            # For loopback devices, check if stream has data available
-            # If stream.read() blocks, it means no audio is playing
-            if is_loopback and stream.get_read_available() < FRAMES_PER_BUFFER:
-                # No data available, add silence and wait a bit
-                frames_queue.put(silence)
-                chunk_count += 1
-                consecutive_errors = 0
-                time.sleep(0.02)  # Small delay to avoid busy waiting
-                continue
-            
-            # Read audio data
+            # Always try to read audio data
+            # For loopback devices, this will capture whatever is playing
             data = stream.read(FRAMES_PER_BUFFER, exception_on_overflow=False)
             frames_queue.put(data)
             chunk_count += 1
