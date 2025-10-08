@@ -153,12 +153,18 @@ def record_audio(device_indices, device_names, channels_list, rates, duration=No
     
     print("-" * 80)
     
-    # Create output filenames
+    # Create output filenames (with device names, timestamp, and index)
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    output_files = [
-        os.path.join(OUTPUT_DIR, f"recording_{timestamp}_device{i+1}.wav")
-        for i in range(len(device_indices))
-    ]
+    output_files = []
+    for i, name in enumerate(device_names):
+        # Clean device name for filename (remove special characters)
+        clean_name = "".join(c if c.isalnum() or c in (' ', '-', '_') else '_' for c in name)
+        clean_name = clean_name.replace(' ', '_')
+        # Truncate if too long
+        if len(clean_name) > 50:
+            clean_name = clean_name[:50]
+        filename = f"recording_{timestamp}_dev{i+1}_{clean_name}.wav"
+        output_files.append(os.path.join(OUTPUT_DIR, filename))
     
     # Ensure output directory exists
     os.makedirs(OUTPUT_DIR, exist_ok=True)
