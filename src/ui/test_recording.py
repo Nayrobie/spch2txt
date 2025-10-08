@@ -8,14 +8,6 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from tests.test_full_workflow import list_all_devices, record_audio, mix_wav_files, transcribe_audio
 
-"""
-Streamlit POC for Teams Audio Transcription
-Captures system audio (WASAPI loopback) and transcribes using OpenAI Whisper
-
-How to run:
-    poetry run streamlit run src/ui/streamlit_app.py
-"""
-
 st.title("Audio Recording Test")
 
 # Select duration
@@ -33,8 +25,13 @@ st.subheader("Select Devices")
 mic_options = {f"{dev['index']}: {dev['name']}": dev['index'] for dev in input_devices}
 loopback_options = {f"{dev['index']}: {dev['name']}": dev['index'] for dev in loopback_devices}
 
-mic_index = st.selectbox("Microphone", list(mic_options.keys()))
-speaker_index = st.selectbox("Loopback Device", list(loopback_options.keys()))
+# Find default devices
+default_mic = next((opt for opt in mic_options.keys() if "Microphone Array (Intel" in opt), list(mic_options.keys())[0])
+default_speaker = next((opt for opt in loopback_options.keys() if "Speakers (Realtek(R) Audio) [Loopback]" in opt), list(loopback_options.keys())[0])
+
+# Display device selection with defaults
+mic_index = st.selectbox("Microphone", list(mic_options.keys()), index=list(mic_options.keys()).index(default_mic))
+speaker_index = st.selectbox("Loopback Device", list(loopback_options.keys()), index=list(loopback_options.keys()).index(default_speaker))
 
 # Initialize session state for recording control
 if 'recording' not in st.session_state:
@@ -65,14 +62,59 @@ if not st.session_state.recording and st.button("Start Recording"):
     stop_flag = st.session_state.stop_flag if duration is None else None
     
     # Record
-    with st.spinner("Recording in progress..."):
-        if duration is None:
-            st.button("Stop Recording", on_click=lambda: setattr(st.session_state.stop_flag, 'value', True))
-            
-        audio_files = record_audio(
-            device_indices, device_names, channels_list, rates,
-            duration=duration, stop_flag=stop_flag
-        )
+    status_placeholder = st.empty()
+    
+    if duration:
+        # For timed recording, show simple message
+        status_placeholder.info("Recording for 30 seconds...")
+    else:
+        # For unlimited recording, show stop button
+        status_placeholder.info("Recording in progress... (Press Stop when done)")
+        st.button("Stop Recording", on_click=lambda: setattr(st.session_state.stop_flag, 'value', True))
+    
+    # Do the actual recording
+    audio_files = record_audio(
+        device_indices, device_names, channels_list, rates,
+        duration=duration, stop_flag=stop_flag
+    )
+    
+    # Clear status message
+    status_placeholder.empty()
+    
+    st.session_state.recording = False
+    if audio_files:
+        st.success("Recording completed!")
+        
+        if st.button("Transcribe"):
+            with st.spinner("Transcribing..."):
+                # Mix and transcribe
+                mixed_audio = mix_wav_files(audio_files)
+                
+                # Save mixed audio
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                mixed_file = os.path.join("src/saved_audio", f"recording_{timestamp}_mixed.wav")
+                
+                with wave.open(mixed_file, 'wb') as wf:
+                    wf.setnchannels(1)
+                    wf.setsampwidth(2)
+                    wf.setframerate(48000)
+                    mixed_audio_int = (mixed_audio * 32767).astype(np.int16)
+                    wf.writeframes(mixed_audio_int.tobytes())
+                
+                # Transcribe and display
+                result = transcribe_audio(mixed_file)
+                st.text("Transcription Results:")
+                st.write(result["text"])
+                
+                # Cleanup
+                os.remove(mixed_file)
+        
+        # Show saved files
+        st.text("Recorded files:")
+        for file in audio_files:
+            st.text(f"- {file}")
+    else:
+        st.error("Recording failed")
         
         st.session_state.recording = False
         if audio_files:
