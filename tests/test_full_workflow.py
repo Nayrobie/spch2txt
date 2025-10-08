@@ -83,14 +83,26 @@ def list_all_devices():
     
     return input_devices, loopback_devices, output_devices
 
-def record_audio(device_indices, device_names, channels_list, rates):
-    """Record audio from multiple devices simultaneously."""
+def record_audio(device_indices, device_names, channels_list, rates, duration=None, stop_flag=None):
+    """Record audio from multiple devices simultaneously.
+    
+    Args:
+        device_indices: List of device indices
+        device_names: List of device names
+        channels_list: List of channel counts
+        rates: List of sample rates
+        duration: Recording duration in seconds, or None for unlimited
+        stop_flag: Optional streamlit session state flag for stopping unlimited recording
+    """
     print("\nRECORDING AUDIO")
     print("-" * 50)
     for i, name in enumerate(device_names):
         print(f"Device {i+1}: {name}")
         print(f"Settings: {rates[i]}Hz, {channels_list[i]} channel(s)")
-    print(f"Duration: {DURATION} seconds")
+    if duration:
+        print(f"Duration: {duration} seconds")
+    else:
+        print("Duration: Unlimited (stop manually)")
     print("-" * 80)
     
     # Create output filenames
@@ -133,18 +145,32 @@ def record_audio(device_indices, device_names, channels_list, rates):
         print("Recording... (speak or play audio now)")
         
         # Record in chunks
-        num_chunks = int(min(rates) / FRAMES_PER_BUFFER * DURATION)
+        if duration:
+            num_chunks = int(min(rates) / FRAMES_PER_BUFFER * duration)
+            chunks_range = range(num_chunks)
+        else:
+            chunks_range = iter(int, 1)  # Infinite iterator
         
-        for i in range(num_chunks):
+        chunk_count = 0
+        for i in chunks_range:
+            if stop_flag and stop_flag.value:
+                break
+                
             for j, stream in enumerate(streams):
                 data = stream.read(FRAMES_PER_BUFFER)
                 frames_list[j].append(data)
             
+            chunk_count += 1
             # Progress indicator
-            if i % 15 == 0:
-                progress = (i / num_chunks) * 100
-                bars = int(progress / 5)
-                print(f"[{'█' * bars}{' ' * (20-bars)}] {progress:.0f}%", end='\r')
+            if duration:
+                if i % 15 == 0:
+                    progress = (i / num_chunks) * 100
+                    bars = int(progress / 5)
+                    print(f"[{'█' * bars}{' ' * (20-bars)}] {progress:.0f}%", end='\r')
+            else:
+                if chunk_count % 30 == 0:  # Show recording duration every ~second
+                    seconds = int(chunk_count * FRAMES_PER_BUFFER / min(rates))
+                    print(f"Recording: {seconds}s", end='\r')
         
         print(f"[{'█' * 20}] 100%")
         
@@ -199,14 +225,24 @@ def mix_wav_files(filepaths):
             
             audio_data.append(audio)
     
-    # Find the shortest length
-    min_length = min(len(audio) for audio in audio_data)
+    # Find the longest length
+    max_length = max(len(audio) for audio in audio_data)
     
-    # Trim all audio to the same length
-    audio_data = [audio[:min_length] for audio in audio_data]
+    # Pad shorter audio with zeros to match the longest length
+    padded_audio = []
+    for audio in audio_data:
+        if len(audio) < max_length:
+            # Pad with zeros (silence) to match longest file
+            padding = np.zeros(max_length - len(audio), dtype=np.float32)
+            padded_audio.append(np.concatenate([audio, padding]))
+        else:
+            padded_audio.append(audio)
     
-    # Mix the audio streams (average them)
-    mixed_audio = np.mean(audio_data, axis=0)
+    # Mix the audio streams (average them where both exist, keep single stream otherwise)
+    mixed_audio = np.zeros(max_length, dtype=np.float32)
+    for audio in padded_audio:
+        mixed_audio += audio
+    mixed_audio /= len(audio_data)  # Average where streams overlap
     
     # Normalize the mixed audio
     max_val = np.max(np.abs(mixed_audio))
