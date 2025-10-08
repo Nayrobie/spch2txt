@@ -1,5 +1,5 @@
 """
-Streamlit POC for Teams/Zoom Audio Transcription
+Streamlit POC for Teams Audio Transcription
 Captures system audio (WASAPI loopback) and transcribes using OpenAI Whisper
 
 How to run:
