@@ -3,3 +3,7 @@
 .qodo_helper/
 
 saved_audio/
+
+TODO.md
+
+src/audio/__pycache__/
