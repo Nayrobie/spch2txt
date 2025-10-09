@@ -193,12 +193,19 @@ def start_recording_thread(device_indices, device_names, channels_list, rates):
                             break
                     
                     if len(frames) > 0:
+                        audio_data = b"".join(frames)
                         with wave.open(output_file, 'wb') as wf:
                             wf.setnchannels(channels_list[i])
                             wf.setsampwidth(pa.get_sample_size(pyaudio.paInt16))
                             wf.setframerate(rates[i])
-                            wf.writeframes(b"".join(frames))
-                        print(f"✓ Saved: {output_file}")
+                            wf.writeframes(audio_data)
+                        
+                        # Calculate volume level
+                        import numpy as np
+                        audio_array = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
+                        volume_level = np.abs(audio_array).mean()
+                        
+                        print(f"✓ Saved: {output_file} (Volume: {volume_level:.4f})")
                     else:
                         print(f"⚠ No audio data for device {i+1}")
                 
@@ -240,35 +247,24 @@ def user_mode_ui(capture, devices):
         st.error("❌ No microphone found")
         return
     
-    if not loopback_devices:
-        st.warning("⚠️ No loopback devices found. Only microphone will be recorded.")
-    
-    st.info(f"🎙️ Microphone: {mic_device['name']}")
-    if loopback_devices:
-        st.info(f"🔊 System Audio: Recording {len(loopback_devices)} loopback device(s)")
+    # Single toggle button for Start/Stop Recording
+    if not st.session_state.recording:
+        if st.button("🔴 Start Recording", type="primary", 
+                    use_container_width=True, key="record_btn"):
+            st.session_state.recording = True
+            st.session_state.stop_recording = False
+            st.session_state.transcript = ""
+            st.session_state.recording_start_time = time.time()
+            st.rerun()
+    else:
+        if st.button("⏹️ Stop Recording", type="secondary", 
+                    use_container_width=True, key="record_btn"):
+            if st.session_state.recording_thread:
+                st.session_state.recording_thread.stop_flag.set()
+            st.session_state.stop_recording = True
+            st.rerun()
     
     st.markdown("---")
-    
-    col1, col2 = st.columns([1, 1])
-    
-    with col1:
-        if not st.session_state.recording:
-            if st.button("🔴 Start Recording", type="primary", 
-                        use_container_width=True, key="start_btn"):
-                st.session_state.recording = True
-                st.session_state.stop_recording = False
-                st.session_state.transcript = ""
-                st.session_state.recording_start_time = time.time()
-                st.rerun()
-    
-    with col2:
-        if st.session_state.recording:
-            if st.button("⏹️ Stop Recording", type="secondary", 
-                        use_container_width=True, key="stop_btn"):
-                if st.session_state.recording_thread:
-                    st.session_state.recording_thread.stop_flag.set()
-                st.session_state.stop_recording = True
-                st.rerun()
     
     if st.session_state.recording and not st.session_state.stop_recording:
         if st.session_state.recording_thread is None:
@@ -394,7 +390,6 @@ def user_mode_ui(capture, devices):
         st.session_state.recording_complete = False
         st.rerun()
     
-    st.markdown("---")
     st.header("Transcript")
     
     if st.session_state.transcript:
@@ -629,6 +624,9 @@ def main():
     """Main Streamlit application."""
     initialize_session_state()
     
+    capture = AudioCapture(frames_per_buffer=1024)
+    devices = capture.list_devices()
+    
     with st.sidebar:
         st.header("Settings")
         dev_mode = st.checkbox(
@@ -644,9 +642,27 @@ def main():
             st.session_state.transcript = ""
             st.session_state.audio_files = []
             st.rerun()
-    
-    capture = AudioCapture(frames_per_buffer=1024)
-    devices = capture.list_devices()
+        
+        # Show detected devices in sidebar for user mode
+        if not st.session_state.dev_mode:
+            st.markdown("---")
+            st.subheader("Detected Devices")
+            
+            mic_device = get_default_microphone(devices)
+            loopback_devices = get_all_loopback_devices(devices)
+            
+            if mic_device:
+                st.markdown(f"🎙️ **Microphone:**  \n{mic_device['name']}")
+            else:
+                st.warning("No microphone detected")
+            
+            if loopback_devices:
+                st.markdown(f"🔊 **System Audio:**  \nRecording {len(loopback_devices)} loopback device(s)")
+                with st.expander("View loopback devices"):
+                    for i, dev in enumerate(loopback_devices, 1):
+                        st.text(f"{i}. {dev['name']}")
+            else:
+                st.info("No loopback devices found")
     
     if st.session_state.dev_mode:
         dev_mode_ui(capture, devices)
