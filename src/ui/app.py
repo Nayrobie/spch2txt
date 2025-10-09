@@ -37,6 +37,8 @@ def initialize_session_state():
         st.session_state.stop_recording = False
     if 'transcript' not in st.session_state:
         st.session_state.transcript = ""
+    if 'transcript_history' not in st.session_state:
+        st.session_state.transcript_history = []
     if 'audio_files' not in st.session_state:
         st.session_state.audio_files = []
     if 'recording_start_time' not in st.session_state:
@@ -253,7 +255,9 @@ def user_mode_ui(capture, devices):
                     use_container_width=True, key="record_btn"):
             st.session_state.recording = True
             st.session_state.stop_recording = False
-            st.session_state.transcript = ""
+            st.session_state.transcript = ""  # Clear previous transcript
+            st.session_state.audio_files = []  # Clear previous audio files
+            st.session_state.recording_complete = False  # Reset completion flag
             st.session_state.recording_start_time = time.time()
             st.rerun()
     else:
@@ -362,6 +366,15 @@ def user_mode_ui(capture, devices):
                 
                 st.session_state.transcript = result["text"].strip()
                 
+                # Add to transcript history with timestamp
+                if st.session_state.transcript:
+                    transcript_entry = {
+                        "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                        "text": st.session_state.transcript,
+                        "language": result.get("language", "unknown")
+                    }
+                    st.session_state.transcript_history.append(transcript_entry)
+                
                 print("\nTRANSCRIPTION RESULTS")
                 print("-" * 50)
                 if st.session_state.transcript:
@@ -384,28 +397,33 @@ def user_mode_ui(capture, devices):
                 import traceback
                 traceback.print_exc()
         
+        # Clear recording state but DON'T rerun - let the UI continue naturally
         st.session_state.recording = False
         st.session_state.stop_recording = False
         st.session_state.recording_thread = None
         st.session_state.recording_complete = False
-        st.rerun()
     
-    st.header("Transcript")
+    st.header("Transcripts")
     
-    if st.session_state.transcript:
-        st.success("✅ Transcription complete!")
-        st.text_area(
-            "Transcribed text:",
-            value=st.session_state.transcript,
-            height=200,
-            key="transcript_display"
-        )
+    if st.session_state.transcript_history:
+        st.success(f"✅ {len(st.session_state.transcript_history)} transcript(s) in this session")
         
-        if st.button("📋 Copy to Clipboard"):
-            st.code(st.session_state.transcript, language=None)
-            st.info("Select and copy the text above")
+        # Display all transcripts in reverse order (newest first)
+        for i, entry in enumerate(reversed(st.session_state.transcript_history), 1):
+            recording_num = len(st.session_state.transcript_history) - i + 1
+            with st.expander(f"Recording #{recording_num} - {entry['timestamp']} ({entry['language']})", expanded=(i==1)):
+                st.markdown("**Transcribed text:**")
+                # Use a container with custom styling to make text selectable but look like a text area
+                st.markdown(
+                    f'<div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; '
+                    f'min-height: 150px; max-height: 300px; overflow-y: auto; '
+                    f'font-family: monospace; white-space: pre-wrap; word-wrap: break-word;">'
+                    f'{entry["text"]}</div>',
+                    unsafe_allow_html=True
+                )
+                st.caption("💡 Select the text above and copy it with Ctrl+C (Cmd+C on Mac)")
     else:
-        st.info("No transcript yet. Start recording to generate a transcript.")
+        st.info("No transcripts yet. Start recording to generate transcripts.")
 
 
 def dev_mode_ui(capture, devices):
