@@ -11,6 +11,7 @@ from pathlib import Path
 from datetime import datetime
 
 import streamlit as st
+from st_copy import copy_button
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
@@ -412,16 +413,15 @@ def user_mode_ui(capture, devices):
         for i, entry in enumerate(reversed(st.session_state.transcript_history), 1):
             recording_num = len(st.session_state.transcript_history) - i + 1
             with st.expander(f"Recording #{recording_num} - {entry['timestamp']} ({entry['language']})", expanded=(i==1)):
-                st.markdown("**Transcribed text:**")
-                # Use a container with custom styling to make text selectable but look like a text area
-                st.markdown(
-                    f'<div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; '
-                    f'min-height: 150px; max-height: 300px; overflow-y: auto; '
-                    f'font-family: monospace; white-space: pre-wrap; word-wrap: break-word;">'
-                    f'{entry["text"]}</div>',
-                    unsafe_allow_html=True
+                st.text_area(
+                    "Transcribed text:",
+                    value=entry['text'],
+                    height=150,
+                    key=f"transcript_{recording_num}",
+                    disabled=False,
+                    label_visibility="visible"
                 )
-                st.caption("💡 Select the text above and copy it with Ctrl+C (Cmd+C on Mac)")
+                copy_button(entry['text'], tooltip="Copy to Clipboard", copied_label="✅ Copied!")
     else:
         st.info("No transcripts yet. Start recording to generate transcripts.")
 

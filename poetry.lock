@@ -1852,6 +1852,21 @@ CFFI = ">=1.0"
 numpy = ["NumPy"]
 
 [[package]]
+name = "st-copy"
+version = "1.1.2"
+description = "Streamlit copy‑to‑clipboard button component"
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "st_copy-1.1.2-py3-none-any.whl", hash = "sha256:1d7b0acecad993391256e9f7bf9a8b8fd376883cfdb41b056721b893b963abd8"},
+    {file = "st_copy-1.1.2.tar.gz", hash = "sha256:0cb7bb905c42ce4f230ae5731caf0ee9cd9d996028c5b7960d88b980e316e5c1"},
+]
+
+[package.dependencies]
+streamlit = ">=1.45.0"
+
+[[package]]
 name = "streamlit"
 version = "1.50.0"
 description = "A faster way to build and share data apps"
@@ -2205,4 +2220,4 @@ watchmedo = ["PyYAML (>=3.10)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.13"
-content-hash = "542b560f605227ffea84056d1087120ac76e895156758b3dc93c87eb48d69b03"
+content-hash = "169c83bb129d51ad13b579bc6579f377b8857d98c7c1de79db84684f78703c2f"
