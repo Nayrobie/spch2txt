@@ -16,18 +16,13 @@ from typing import Optional, Dict, List, Tuple
 class AudioCapture:
     """Handle audio recording from various input devices."""
 
-    def __init__(self, rate: int = 16000, channels: int = 1,
-                 frames_per_buffer: int = 1024):
+    def __init__(self, frames_per_buffer: int = 1024):
         """
         Initialize audio capture.
 
         Args:
-            rate: Sample rate in Hz (default 16000 for Whisper)
-            channels: Number of audio channels (1=mono, 2=stereo)
             frames_per_buffer: Buffer size for audio chunks
         """
-        self.rate = rate
-        self.channels = channels
         self.frames_per_buffer = frames_per_buffer
         self.pa = None
         self.stream = None
@@ -119,56 +114,7 @@ class AudioCapture:
         finally:
             pa.terminate()
     
-    def record(self, duration: int, device_index: Optional[int] = None,
-               output_file: Optional[str] = None) -> bytes:
-        """
-        Record audio for a specified duration.
-
-        Args:
-            duration: Recording duration in seconds
-            device_index: Audio device index (None for default)
-            output_file: Optional WAV file path to save recording
-
-        Returns:
-            Raw audio data as bytes
-        """
-        self.pa = pyaudio.PyAudio()
-        
-        # Get device
-        if device_index is None:
-            device_info = self.pa.get_default_input_device_info()
-            device_index = device_info['index']
-        
-        # Open stream
-        self.stream = self.pa.open(
-            format=pyaudio.paInt16,
-            channels=self.channels,
-            rate=self.rate,
-            input=True,
-            frames_per_buffer=self.frames_per_buffer,
-            input_device_index=device_index
-        )
-        
-        # Record
-        num_chunks = int(self.rate / self.frames_per_buffer * duration)
-        frames = []
-        
-        for _ in range(num_chunks):
-            data = self.stream.read(self.frames_per_buffer)
-            frames.append(data)
-        
-        # Cleanup
-        self.stream.close()
-        self.pa.terminate()
-
-        audio_data = b"".join(frames)
-        
-        # Save to file if requested
-        if output_file:
-            self._save_wav(audio_data, output_file)
-
-        return audio_data
-
+    
     def record_multi_device(self, device_indices: List[int],
                             device_names: List[str],
                             channels_list: List[int],
@@ -356,14 +302,7 @@ class AudioCapture:
 
                 time.sleep(0.01)
     
-    def _save_wav(self, audio_data: bytes, filepath: str):
-        """Save audio data to WAV file."""
-        with wave.open(filepath, 'wb') as wf:
-            wf.setnchannels(self.channels)
-            wf.setsampwidth(2)
-            wf.setframerate(self.rate)
-            wf.writeframes(audio_data)
-    
+        
     def cleanup(self):
         """Clean up audio resources."""
         if self.stream:
