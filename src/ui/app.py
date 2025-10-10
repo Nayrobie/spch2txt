@@ -239,6 +239,8 @@ def start_recording_thread(device_indices, device_names, channels_list, rates):
     return thread
 
 
+
+
 def user_mode_ui(capture, devices):
     """Simple user interface."""
     st.title("Speech to Text - POC")
