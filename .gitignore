@@ -11,3 +11,10 @@ src/saved_transcripts/*
 TODO.md
 
 src/audio/__pycache__/
+
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+*.key
+secrets.json
