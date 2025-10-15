@@ -26,14 +26,14 @@ class AudioTranscriber:
         if self.model is None:
             self.model = whisper.load_model(self.model_name)
 
-    def transcribe(self, audio_input, language: str = "en",
+    def transcribe(self, audio_input, language: str | None = None,
                    **kwargs) -> Dict:
         """
         Transcribe audio to text.
 
         Args:
             audio_input: Can be filepath (str) or numpy array
-            language: Language code (default: "en")
+            language: Language code (default: detects automatically)
             **kwargs: Additional arguments for whisper.transcribe()
 
         Returns:
