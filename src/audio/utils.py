@@ -90,6 +90,8 @@ def mix_wav_files(filepaths: List[str],
                   target_rate: int = 48000) -> np.ndarray:
     """
     Mix multiple WAV files into a single audio stream.
+    Each audio stream is normalized individually before mixing to ensure
+    equal contribution regardless of original volume levels.
 
     Args:
         filepaths: List of WAV file paths
@@ -127,6 +129,12 @@ def mix_wav_files(filepaths: List[str],
                     np.arange(len(audio), dtype=np.float32),
                     audio
                 )
+            
+            # Normalize each audio stream individually before mixing
+            # This ensures microphone and loopback have equal weight
+            max_val = np.max(np.abs(audio))
+            if max_val > 0:
+                audio = audio / max_val
 
             audio_data.append(audio)
 
@@ -143,11 +151,13 @@ def mix_wav_files(filepaths: List[str],
         else:
             padded_audio.append(audio)
 
+    # Mix by averaging - now both streams have equal weight
     mixed_audio = np.zeros(max_length, dtype=np.float32)
     for audio in padded_audio:
         mixed_audio += audio
     mixed_audio /= len(audio_data)
 
+    # Final normalization of the mixed result
     max_val = np.max(np.abs(mixed_audio))
     if max_val > 0:
         mixed_audio = mixed_audio / max_val

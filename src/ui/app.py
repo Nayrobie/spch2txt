@@ -7,6 +7,7 @@ poetry run streamlit run src/ui/app.py
 import os
 import sys
 import time
+import json
 from pathlib import Path
 from datetime import datetime
 
@@ -18,14 +19,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from src.audio import (
     AudioCapture,
     AudioTranscriber,
-    categorize_devices,
-    mix_wav_files,
-    save_audio_array,
-    get_audio_level
+    categorize_devices
 )
 
 
 OUTPUT_DIR = "src/saved_audio"
+TRANSCRIPT_DIR = "src/saved_transcripts"
 
 
 def initialize_session_state():
@@ -48,6 +47,18 @@ def initialize_session_state():
         st.session_state.recording_thread = None
     if 'recording_complete' not in st.session_state:
         st.session_state.recording_complete = False
+    if 'transcriber' not in st.session_state:
+        # Initialize transcriber once at startup
+        print("\n" + "="*80)
+        print("INITIALIZING WHISPER MODEL")
+        print("="*80)
+        print("Loading Whisper model (base)...")
+        st.session_state.transcriber = AudioTranscriber(model_name="base")
+        st.session_state.transcriber.load_model()
+        print("✓ Model loaded and cached for all transcriptions")
+        print("="*80 + "\n")
+    if 'device_names' not in st.session_state:
+        st.session_state.device_names = []
 
 
 def get_default_microphone(devices):
@@ -68,6 +79,38 @@ def get_all_loopback_devices(devices):
     """Get all loopback devices."""
     categorized = categorize_devices(devices)
     return categorized['loopback']
+
+
+def save_transcript_json(result, audio_files):
+    """
+    Save transcript to JSON file with timestamps and metadata.
+    
+    Args:
+        result: Transcription result dictionary
+        audio_files: List of audio file paths
+    """
+    os.makedirs(TRANSCRIPT_DIR, exist_ok=True)
+    
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    json_filename = f"transcript_{timestamp}.json"
+    json_filepath = os.path.join(TRANSCRIPT_DIR, json_filename)
+    
+    # Prepare JSON data
+    json_data = {
+        "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "combined_text": result["combined_text"],
+        "segments": result["segments"],
+        "separate_transcripts": result["transcripts"],
+        "audio_files": [os.path.basename(f) for f in audio_files],
+        "num_devices": result["num_devices"]
+    }
+    
+    # Save to JSON file
+    with open(json_filepath, 'w', encoding='utf-8') as f:
+        json.dump(json_data, f, indent=2, ensure_ascii=False)
+    
+    print(f"\n✓ Transcript saved to: {json_filepath}")
+    return json_filepath
 
 
 def start_recording_thread(device_indices, device_names, channels_list, rates):
@@ -239,6 +282,8 @@ def start_recording_thread(device_indices, device_names, channels_list, rates):
     return thread
 
 
+
+
 def user_mode_ui(capture, devices):
     """Simple user interface."""
     st.title("Speech to Text - POC")
@@ -283,6 +328,9 @@ def user_mode_ui(capture, devices):
                 device_names.append(loopback['name'])
                 channels_list.append(min(loopback['maxInputChannels'], 2))
                 rates.append(int(loopback['defaultSampleRate']))
+            
+            # Store device names for transcription
+            st.session_state.device_names = device_names
             
             try:
                 st.session_state.recording_thread = start_recording_thread(
@@ -331,48 +379,33 @@ def user_mode_ui(capture, devices):
             st.rerun()
     
     if st.session_state.recording_complete and st.session_state.audio_files:
-        with st.spinner("Processing and transcribing audio..."):
+        with st.spinner("Transcribing separate audio streams..."):
             print("\n" + "="*80)
-            print("MIXING AND TRANSCRIBING AUDIO")
+            print("TRANSCRIBING SEPARATE AUDIO STREAMS")
             print("="*80)
             
             try:
-                print("Mixing audio files...")
-                mixed_audio = mix_wav_files(st.session_state.audio_files)
-                print(f"✓ Mixed audio length: {len(mixed_audio)/48000:.1f} seconds")
+                print("\n✓ Using cached Whisper model")
                 
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                mixed_file = os.path.join(
-                    OUTPUT_DIR, f"recording_{timestamp}_mixed.wav"
+                # Transcribe each device separately
+                result = st.session_state.transcriber.transcribe_multiple(
+                    st.session_state.audio_files,
+                    st.session_state.device_names
                 )
                 
-                print(f"Saving mixed audio to: {mixed_file}")
-                save_audio_array(mixed_audio, mixed_file, rate=48000)
-                print("✓ Mixed audio saved")
+                st.session_state.transcript = result["combined_text"]
                 
-                audio_level = get_audio_level(mixed_audio)
-                print(f"Audio level: {audio_level:.6f}")
-                
-                if audio_level < 0.001:
-                    print("⚠ Warning: Audio is very quiet or silent")
-                    st.warning("Audio is very quiet or silent")
-                
-                print("\nLoading Whisper model (base)...")
-                transcriber = AudioTranscriber(model_name="base")
-                transcriber.load_model()
-                print("✓ Model loaded")
-                
-                print("Transcribing...")
-                result = transcriber.transcribe(mixed_file, verbose=False)
-                
-                st.session_state.transcript = result["text"].strip()
+                # Save transcript to JSON file
+                if st.session_state.transcript and st.session_state.transcript != "(No speech detected)":
+                    save_transcript_json(result, st.session_state.audio_files)
                 
                 # Add to transcript history with timestamp
-                if st.session_state.transcript:
+                if st.session_state.transcript and st.session_state.transcript != "(No speech detected)":
                     transcript_entry = {
                         "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                         "text": st.session_state.transcript,
-                        "language": result.get("language", "unknown")
+                        "language": result["transcripts"][0]["language"] if result["transcripts"] else "unknown",
+                        "separate_transcripts": result["transcripts"]
                     }
                     st.session_state.transcript_history.append(transcript_entry)
                 
@@ -383,13 +416,6 @@ def user_mode_ui(capture, devices):
                 else:
                     print("(No speech detected)")
                 print("-" * 50)
-                
-                if "language" in result:
-                    print(f"\nDetected Language: {result['language']}")
-                
-                print("\nCleaning up temporary files...")
-                os.remove(mixed_file)
-                print("✓ Cleanup complete")
                 print("="*80)
                 
             except Exception as e:
@@ -555,41 +581,21 @@ def dev_mode_ui(capture, devices):
                 st.session_state.recording = False
                 st.rerun()
         
-        with st.spinner("Mixing and transcribing audio..."):
+        with st.spinner("Transcribing separate audio streams..."):
             print("\n" + "="*80)
-            print("MIXING AND TRANSCRIBING AUDIO")
+            print("TRANSCRIBING SEPARATE AUDIO STREAMS")
             print("="*80)
             
             try:
-                print("Mixing audio files...")
-                mixed_audio = mix_wav_files(st.session_state.audio_files)
-                print(f"✓ Mixed audio length: {len(mixed_audio)/48000:.1f} seconds")
+                print("\n✓ Using cached Whisper model")
                 
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                mixed_file = os.path.join(
-                    OUTPUT_DIR, f"recording_{timestamp}_mixed.wav"
+                # Transcribe each device separately
+                result = st.session_state.transcriber.transcribe_multiple(
+                    st.session_state.audio_files,
+                    device_names
                 )
                 
-                print(f"Saving mixed audio to: {mixed_file}")
-                save_audio_array(mixed_audio, mixed_file, rate=48000)
-                print("✓ Mixed audio saved")
-                
-                audio_level = get_audio_level(mixed_audio)
-                print(f"Audio level: {audio_level:.6f}")
-                
-                if audio_level < 0.001:
-                    print("⚠ Warning: Audio is very quiet or silent")
-                    st.warning("Audio is very quiet or silent")
-                
-                print("\nLoading Whisper model (base)...")
-                transcriber = AudioTranscriber(model_name="base")
-                transcriber.load_model()
-                print("✓ Model loaded")
-                
-                print("Transcribing...")
-                result = transcriber.transcribe(mixed_file, verbose=False)
-                
-                st.session_state.transcript = result["text"].strip()
+                st.session_state.transcript = result["combined_text"]
                 
                 print("\nTRANSCRIPTION RESULTS")
                 print("-" * 50)
@@ -598,13 +604,6 @@ def dev_mode_ui(capture, devices):
                 else:
                     print("(No speech detected)")
                 print("-" * 50)
-                
-                if "language" in result:
-                    print(f"\nDetected Language: {result['language']}")
-                
-                print("\nCleaning up temporary files...")
-                os.remove(mixed_file)
-                print("✓ Cleanup complete")
                 print("="*80)
                 
             except Exception as e:

@@ -26,14 +26,14 @@ class AudioTranscriber:
         if self.model is None:
             self.model = whisper.load_model(self.model_name)
 
-    def transcribe(self, audio_input, language: str = "en",
+    def transcribe(self, audio_input, language: str | None = None,
                    **kwargs) -> Dict:
         """
         Transcribe audio to text.
 
         Args:
             audio_input: Can be filepath (str) or numpy array
-            language: Language code (default: "en")
+            language: Language code (default: detects automatically)
             **kwargs: Additional arguments for whisper.transcribe()
 
         Returns:
@@ -43,68 +43,24 @@ class AudioTranscriber:
         
         # Handle different input types
         if isinstance(audio_input, str):
-            # Load from file
-            audio = self._load_wav_file(audio_input)
+            # Pass file path directly to Whisper - it handles all preprocessing
+            result = self.model.transcribe(audio_input, language=language, **kwargs)
         elif isinstance(audio_input, np.ndarray):
             # Ensure audio data is float32
             audio = audio_input.astype(np.float32)
+            result = self.model.transcribe(audio, language=language, **kwargs)
         elif isinstance(audio_input, bytes):
             # Convert bytes to numpy array
             audio = np.frombuffer(
                 audio_input, dtype=np.int16
             ).astype(np.float32) / 32768.0
+            result = self.model.transcribe(audio, language=language, **kwargs)
         else:
             raise ValueError(
                 f"Unsupported audio input type: {type(audio_input)}"
             )
-        # Transcribe
-
-        audio = audio.astype(np.float32)
-        result = self.model.transcribe(audio, language=language, **kwargs)
+        
         return result
-    
-    def _load_wav_file(self, filepath: str) -> np.ndarray:
-        """
-        Load a WAV file and convert to format expected by Whisper.
-
-        Args:
-            filepath: Path to WAV file
-
-        Returns:
-            Audio as numpy array (float32, normalized to [-1, 1])
-        """
-        with wave.open(filepath, 'rb') as wf:
-            n_channels = wf.getnchannels()
-            sampwidth = wf.getsampwidth()
-            framerate = wf.getframerate()
-            n_frames = wf.getnframes()
-
-            audio_data = wf.readframes(n_frames)
-
-            if sampwidth == 2:
-                audio = np.frombuffer(audio_data, dtype=np.int16)
-            else:
-                raise ValueError(f"Unsupported sample width: {sampwidth}")
-            
-            # Convert to float32 and normalize
-            audio = audio.astype(np.float32) / 32768.0
-            
-            # Convert stereo to mono if needed
-            if n_channels == 2:
-                audio = audio.reshape(-1, 2).mean(axis=1)
-            
-            # Resample to 16kHz if needed
-            if framerate != 16000:
-                duration = len(audio) / framerate
-                target_length = int(duration * 16000)
-                audio = np.interp(
-                    np.linspace(0, len(audio), target_length,
-                                dtype=np.float32),
-                    np.arange(len(audio), dtype=np.float32),
-                    audio
-                ).astype(np.float32)
-
-            return audio.astype(np.float32)
     
     def get_segments(self, result: Dict) -> list:
         """
@@ -127,3 +83,84 @@ class AudioTranscriber:
             }
             for seg in result['segments']
         ]
+    
+    def transcribe_multiple(self, audio_files: list, device_names: list) -> Dict:
+        """
+        Transcribe multiple audio files separately and combine results.
+        Uses timestamps to interleave segments in chronological order.
+        
+        Args:
+            audio_files: List of audio file paths
+            device_names: List of device names corresponding to audio files
+            
+        Returns:
+            Dictionary with separate and combined transcripts
+        """
+        import os
+        
+        transcripts = []
+        all_segments = []
+        
+        for i, (audio_file, device_name) in enumerate(zip(audio_files, device_names)):
+            print(f"\nTranscribing device {i+1}: {device_name}")
+            print(f"File: {os.path.basename(audio_file)}")
+            
+            try:
+                result = self.transcribe(audio_file, verbose=False)
+                text = result["text"].strip()
+                
+                # Determine speaker label
+                is_loopback = 'loopback' in device_name.lower()
+                speaker_label = "System Audio" if is_loopback else "Microphone"
+                
+                if text:
+                    transcripts.append({
+                        "device": device_name,
+                        "speaker": speaker_label,
+                        "text": text,
+                        "language": result.get("language", "unknown"),
+                        "audio_file": os.path.basename(audio_file)
+                    })
+                    
+                    print(f"✓ Transcribed ({len(text)} chars)")
+                    
+                    # Extract segments with timestamps
+                    if "segments" in result:
+                        for segment in result["segments"]:
+                            segment_text = segment["text"].strip()
+                            if segment_text:
+                                all_segments.append({
+                                    "start": segment["start"],
+                                    "end": segment["end"],
+                                    "text": segment_text,
+                                    "speaker": speaker_label
+                                })
+                else:
+                    print("⚠ No speech detected")
+                    
+            except Exception as e:
+                print(f"❌ Error transcribing {device_name}: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        # Sort segments by start time to get chronological order
+        all_segments.sort(key=lambda x: x["start"])
+        
+        # Build combined text with timestamps
+        combined_lines = []
+        for segment in all_segments:
+            # Format timestamp as MM:SS
+            minutes = int(segment["start"] // 60)
+            seconds = int(segment["start"] % 60)
+            timestamp = f"{minutes:02d}:{seconds:02d}"
+            
+            combined_lines.append(f"[{timestamp}] [{segment['speaker']}]: {segment['text']}")
+        
+        combined_text = "\n\n".join(combined_lines) if combined_lines else "(No speech detected)"
+        
+        return {
+            "transcripts": transcripts,
+            "combined_text": combined_text,
+            "segments": all_segments,
+            "num_devices": len(audio_files)
+        }
