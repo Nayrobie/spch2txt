@@ -2,8 +2,11 @@
 .qodo/
 .qodo_helper/
 
-saved_audio/
-saved_transcripts/
+src/saved_audio/*
+!src/saved_audio/.gitkeep
+
+src/saved_transcripts/*
+!src/saved_transcripts/.gitkeep
 
 TODO.md
 
