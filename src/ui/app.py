@@ -7,6 +7,7 @@ poetry run streamlit run src/ui/app.py
 import os
 import sys
 import time
+import json
 from pathlib import Path
 from datetime import datetime
 
@@ -78,6 +79,38 @@ def get_all_loopback_devices(devices):
     """Get all loopback devices."""
     categorized = categorize_devices(devices)
     return categorized['loopback']
+
+
+def save_transcript_json(result, audio_files):
+    """
+    Save transcript to JSON file with timestamps and metadata.
+    
+    Args:
+        result: Transcription result dictionary
+        audio_files: List of audio file paths
+    """
+    os.makedirs(TRANSCRIPT_DIR, exist_ok=True)
+    
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    json_filename = f"transcript_{timestamp}.json"
+    json_filepath = os.path.join(TRANSCRIPT_DIR, json_filename)
+    
+    # Prepare JSON data
+    json_data = {
+        "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "combined_text": result["combined_text"],
+        "segments": result["segments"],
+        "separate_transcripts": result["transcripts"],
+        "audio_files": [os.path.basename(f) for f in audio_files],
+        "num_devices": result["num_devices"]
+    }
+    
+    # Save to JSON file
+    with open(json_filepath, 'w', encoding='utf-8') as f:
+        json.dump(json_data, f, indent=2, ensure_ascii=False)
+    
+    print(f"\n✓ Transcript saved to: {json_filepath}")
+    return json_filepath
 
 
 def start_recording_thread(device_indices, device_names, channels_list, rates):
@@ -362,6 +395,10 @@ def user_mode_ui(capture, devices):
                 
                 st.session_state.transcript = result["combined_text"]
                 
+                # Save transcript to JSON file
+                if st.session_state.transcript and st.session_state.transcript != "(No speech detected)":
+                    save_transcript_json(result, st.session_state.audio_files)
+                
                 # Add to transcript history with timestamp
                 if st.session_state.transcript and st.session_state.transcript != "(No speech detected)":
                     transcript_entry = {
@@ -544,41 +581,21 @@ def dev_mode_ui(capture, devices):
                 st.session_state.recording = False
                 st.rerun()
         
-        with st.spinner("Mixing and transcribing audio..."):
+        with st.spinner("Transcribing separate audio streams..."):
             print("\n" + "="*80)
-            print("MIXING AND TRANSCRIBING AUDIO")
+            print("TRANSCRIBING SEPARATE AUDIO STREAMS")
             print("="*80)
             
             try:
-                print("Mixing audio files...")
-                mixed_audio = mix_wav_files(st.session_state.audio_files)
-                print(f"✓ Mixed audio length: {len(mixed_audio)/48000:.1f} seconds")
+                print("\n✓ Using cached Whisper model")
                 
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                mixed_file = os.path.join(
-                    OUTPUT_DIR, f"recording_{timestamp}_mixed.wav"
+                # Transcribe each device separately
+                result = st.session_state.transcriber.transcribe_multiple(
+                    st.session_state.audio_files,
+                    device_names
                 )
                 
-                print(f"Saving mixed audio to: {mixed_file}")
-                save_audio_array(mixed_audio, mixed_file, rate=48000)
-                print("✓ Mixed audio saved")
-                
-                audio_level = get_audio_level(mixed_audio)
-                print(f"Audio level: {audio_level:.6f}")
-                
-                if audio_level < 0.001:
-                    print("⚠ Warning: Audio is very quiet or silent")
-                    st.warning("Audio is very quiet or silent")
-                
-                print("\nLoading Whisper model (base)...")
-                transcriber = AudioTranscriber(model_name="base")
-                transcriber.load_model()
-                print("✓ Model loaded")
-                
-                print("Transcribing...")
-                result = transcriber.transcribe(mixed_file, verbose=False)
-                
-                st.session_state.transcript = result["text"].strip()
+                st.session_state.transcript = result["combined_text"]
                 
                 print("\nTRANSCRIPTION RESULTS")
                 print("-" * 50)
@@ -587,13 +604,6 @@ def dev_mode_ui(capture, devices):
                 else:
                     print("(No speech detected)")
                 print("-" * 50)
-                
-                if "language" in result:
-                    print(f"\nDetected Language: {result['language']}")
-                
-                print("\nCleaning up temporary files...")
-                os.remove(mixed_file)
-                print("✓ Cleanup complete")
                 print("="*80)
                 
             except Exception as e:
