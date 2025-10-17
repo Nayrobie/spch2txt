@@ -157,33 +157,16 @@ class AudioTranscriber:
                 is_loopback = 'loopback' in device_name.lower()
                 device_label = "System Audio" if is_loopback else "Microphone"
                 
-                # First complete the transcription
-                if text:
-                    # Get the basic segment information
-                    device_segments = []
-                    if "segments" in result:
-                        for segment in result["segments"]:
-                            if self._is_valid_transcription(segment["text"].strip(), 
-                                                          segment.get("no_speech_prob", 0.0)):
-                                device_segments.append({
-                                    "start": segment["start"],
-                                    "end": segment["end"],
-                                    "text": segment["text"].strip()
-                                })
-                    
-                    # Now perform diarization if diarizer is provided
-                    diarization_segments = None
-                    if diarizer is not None:
-                        print(f"  Running diarization...")
-                        try:
-                            diarization_segments = diarizer.diarize(audio_file)
-                            if diarization_segments:
-                                print(f"  ✓ Found {len(diarization_segments)} speaker segment(s)")
-                            elif diarization_segments is not None:
-                                print(f"  ⚠ No speakers detected in diarization")
-                        except Exception as e:
-                            print(f"  ⚠ Diarization error: {e}")
-                            diarization_segments = None
+                # Perform diarization if diarizer is provided
+                diarization_segments = None
+                if diarizer is not None and text:
+                    print(f"  Running diarization...")
+                    try:
+                        diarization_segments = diarizer.diarize(audio_file)
+                        if diarization_segments:
+                            print(f"  ✓ Found {len(diarization_segments)} speaker segment(s)")
+                    except Exception as e:
+                        print(f"  ⚠ Diarization error: {e}")
                 
                 if text:
                     transcripts.append({
