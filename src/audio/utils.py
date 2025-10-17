@@ -1,5 +1,16 @@
 """
 Utility functions for audio processing.
+
+This module provides helper functions for audio manipulation, device categorization,
+timestamp formatting, and audio file operations. Used throughout the application
+for common audio processing tasks.
+
+Key features:
+- Audio device categorization (input/output/loopback)
+- Timestamp formatting for display
+- Audio normalization and mixing
+- WAV file duration calculation
+- Audio level (RMS) calculation
 """
 
 import os
@@ -29,13 +40,18 @@ def format_timestamp(seconds: float) -> str:
 
 def categorize_devices(devices: List[Dict]) -> Dict[str, List[Dict]]:
     """
-    Categorize audio devices by type.
+    Categorize audio devices by type (input, output, loopback).
+    
+    Separates devices into categories based on their capabilities. Loopback
+    devices are identified by name, input devices by maxInputChannels > 0,
+    and output devices by maxOutputChannels > 0.
     
     Args:
-        devices: List of device information dictionaries
+        devices: List of device information dictionaries from AudioCapture.list_devices()
         
     Returns:
-        Dictionary with 'input', 'output', and 'loopback' device lists
+        Dictionary with keys 'input', 'output', 'loopback', each containing a list
+        of device dictionaries
     """
     categorized = {
         'input': [],
@@ -89,16 +105,19 @@ def normalize_audio(audio: np.ndarray) -> np.ndarray:
 def mix_wav_files(filepaths: List[str],
                   target_rate: int = 48000) -> np.ndarray:
     """
-    Mix multiple WAV files into a single audio stream.
-    Each audio stream is normalized individually before mixing to ensure
-    equal contribution regardless of original volume levels.
+    Mix multiple WAV files into a single audio stream with equal weighting.
+    
+    Loads multiple WAV files, normalizes each individually to ensure equal
+    contribution regardless of original volume, resamples to target rate if
+    needed, and mixes by averaging. Useful for combining microphone and
+    loopback audio streams.
 
     Args:
-        filepaths: List of WAV file paths
-        target_rate: Target sample rate for output
+        filepaths: List of WAV file paths to mix
+        target_rate: Target sample rate for output (default: 48000 Hz)
 
     Returns:
-        Mixed audio as numpy array (float32, normalized)
+        Mixed audio as numpy array (float32, normalized to [-1, 1])
     """
     audio_data = []
 
@@ -169,12 +188,14 @@ def save_audio_array(audio: np.ndarray, filepath: str,
                      rate: int = 48000, channels: int = 1):
     """
     Save audio array to WAV file.
+    
+    Converts float32 audio data to int16 format and writes to WAV file.
 
     Args:
         audio: Audio array (float32, normalized to [-1, 1])
-        filepath: Output file path
-        rate: Sample rate
-        channels: Number of channels
+        filepath: Output file path for WAV file
+        rate: Sample rate in Hz (default: 48000)
+        channels: Number of audio channels (default: 1 for mono)
     """
     audio_int = (audio * 32767).astype(np.int16)
 
@@ -187,12 +208,14 @@ def save_audio_array(audio: np.ndarray, filepath: str,
 
 def get_audio_level(audio: np.ndarray) -> float:
     """
-    Calculate RMS audio level.
+    Calculate RMS (Root Mean Square) audio level.
+    
+    Provides a measure of audio loudness/amplitude.
 
     Args:
-        audio: Audio array
+        audio: Audio array (any numeric type)
 
     Returns:
-        RMS level as float
+        RMS level as float (higher values indicate louder audio)
     """
     return float(np.sqrt(np.mean(audio ** 2)))

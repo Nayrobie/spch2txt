@@ -1,5 +1,16 @@
 """
 Audio transcription functionality using OpenAI Whisper.
+
+This module handles speech-to-text transcription using OpenAI's Whisper model.
+Supports multiple audio input formats, hallucination filtering, and integration
+with speaker diarization for multi-speaker transcription.
+
+Key features:
+- Multiple Whisper model sizes (tiny to large)
+- Hallucination detection and filtering
+- Multi-device transcription with speaker labels
+- Timestamped segment extraction
+- Integration with pyannote.audio for speaker diarization
 """
 
 import whisper
@@ -9,7 +20,13 @@ import os
 
 
 class AudioTranscriber:
-    """Handle audio transcription using Whisper."""
+    """
+    Handle audio transcription using OpenAI Whisper.
+    
+    Provides methods for transcribing audio files or arrays, extracting
+    timestamped segments, filtering hallucinations, and combining multiple
+    audio streams with speaker diarization.
+    """
 
     def __init__(self, model_name: str = "base"):
         """
@@ -29,15 +46,24 @@ class AudioTranscriber:
     def transcribe(self, audio_input, language: str | None = None,
                    **kwargs) -> Dict:
         """
-        Transcribe audio to text.
+        Transcribe audio to text using Whisper.
+        
+        Accepts multiple input formats and passes them to Whisper for transcription.
+        Whisper handles all audio preprocessing internally.
 
         Args:
-            audio_input: Can be filepath (str) or numpy array
-            language: Language code (default: detects automatically)
-            **kwargs: Additional arguments for whisper.transcribe()
+            audio_input: Audio source - can be file path (str), numpy array, or bytes
+            language: Language code for transcription (default: auto-detect)
+            **kwargs: Additional arguments passed to whisper.transcribe()
 
         Returns:
-            Dictionary with transcription results
+            Dictionary containing transcription results with keys:
+            - 'text': Full transcribed text
+            - 'segments': List of timestamped segments
+            - 'language': Detected or specified language
+            
+        Raises:
+            ValueError: If audio_input type is not supported
         """
         self.load_model()
         
@@ -88,12 +114,15 @@ class AudioTranscriber:
         """
         Check if a transcription segment is valid (not a hallucination).
         
+        Filters out common Whisper hallucinations that occur during silence or
+        low audio levels. Uses no_speech_prob threshold and pattern matching.
+        
         Args:
-            text: Transcribed text
-            no_speech_prob: Probability that segment contains no speech
+            text: Transcribed text to validate
+            no_speech_prob: Whisper's probability that segment contains no speech (0-1)
             
         Returns:
-            True if segment appears to be valid speech
+            True if segment appears to be valid speech, False if likely hallucination
         """
         if no_speech_prob > 0.6:
             return False
@@ -130,17 +159,23 @@ class AudioTranscriber:
         diarizer: Optional[object] = None
     ) -> Dict:
         """
-        Transcribe multiple audio files separately and combine results.
-        Uses timestamps to interleave segments in chronological order.
-        Optionally performs speaker diarization on each audio file.
+        Transcribe multiple audio files separately and combine results chronologically.
+        
+        Transcribes each audio stream independently, filters hallucinations, optionally
+        performs speaker diarization, then combines all segments in chronological order
+        using timestamps. Useful for multi-device recordings (e.g., microphone + loopback).
         
         Args:
-            audio_files: List of audio file paths
-            device_names: List of device names corresponding to audio files
-            diarizer: Optional PyannoteDiarizer instance for speaker diarization
+            audio_files: List of audio file paths to transcribe
+            device_names: List of device names for labeling (e.g., "Microphone", "Loopback")
+            diarizer: Optional PyannoteDiarizer instance for speaker identification
             
         Returns:
-            Dictionary with separate and combined transcripts
+            Dictionary containing:
+            - 'transcripts': List of per-device transcription results
+            - 'combined_text': Chronologically ordered text with timestamps and speakers
+            - 'segments': List of all segments sorted by start time
+            - 'num_devices': Number of devices transcribed
         """
         
         transcripts = []

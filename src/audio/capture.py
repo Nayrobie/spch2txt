@@ -1,5 +1,15 @@
 """
 Audio capture functionality using pyaudiowpatch for Windows WASAPI support.
+
+This module handles recording audio from multiple devices simultaneously, including
+microphones and system loopback devices. It uses threading to capture from multiple
+sources in parallel and saves each stream to separate WAV files.
+
+Key features:
+- Multi-device simultaneous recording
+- WASAPI loopback support for system audio capture
+- Audio level detection for device testing
+- Thread-safe recording with error handling
 """
 
 import os
@@ -14,7 +24,12 @@ from typing import Optional, Dict, List, Tuple
 
 
 class AudioCapture:
-    """Handle audio recording from various input devices."""
+    """
+    Handle audio recording from various input devices.
+    
+    Supports recording from microphones, speakers, and WASAPI loopback devices.
+    Can record from multiple devices simultaneously using threading.
+    """
 
     def __init__(self, frames_per_buffer: int = 1024):
         """
@@ -122,18 +137,25 @@ class AudioCapture:
                             duration: int,
                             output_dir: str = "src/saved_audio") -> List[str]:
         """
-        Record audio from multiple devices simultaneously.
+        Record audio from multiple devices simultaneously using threading.
+        
+        Each device is recorded in a separate thread to ensure synchronization.
+        Handles loopback devices specially to capture system audio. Saves each
+        stream to a separate WAV file with timestamp and device name.
 
         Args:
-            device_indices: List of device indices
-            device_names: List of device names
-            channels_list: List of channel counts
-            rates: List of sample rates
+            device_indices: List of device indices to record from
+            device_names: List of device names for file naming
+            channels_list: List of channel counts for each device
+            rates: List of sample rates for each device
             duration: Recording duration in seconds
-            output_dir: Directory to save recordings
+            output_dir: Directory to save recordings (default: "src/saved_audio")
 
         Returns:
-            List of output file paths
+            List of output file paths for recorded WAV files
+            
+        Raises:
+            RuntimeError: If stream opening fails or recording error occurs
         """
         os.makedirs(output_dir, exist_ok=True)
 
@@ -268,16 +290,20 @@ class AudioCapture:
                               num_chunks: int, frames_queue: queue.Queue,
                               stop_event: threading.Event):
         """
-        Thread function to record from a single stream.
+        Thread function to record from a single audio stream.
+        
+        Continuously reads audio chunks from the stream and adds them to a queue.
+        Handles read errors gracefully by inserting silence. Stops when the
+        specified number of chunks is reached or stop event is set.
 
         Args:
-            stream: PyAudio stream object
-            device_name: Name of the device
-            is_loopback: Whether device is loopback
-            channels: Number of channels
-            num_chunks: Number of chunks to record
-            frames_queue: Queue to store frames
-            stop_event: Event to signal stop
+            stream: PyAudio stream object to read from
+            device_name: Name of the device (for logging)
+            is_loopback: Whether device is a loopback device
+            channels: Number of audio channels
+            num_chunks: Maximum number of chunks to record
+            frames_queue: Queue to store audio frame data
+            stop_event: Threading event to signal early stop
         """
         chunk_count = 0
         silence = b'\x00' * (self.frames_per_buffer * 2 * channels)
