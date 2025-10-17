@@ -1,5 +1,18 @@
 """
 Speaker diarization functionality using pyannote.audio.
+
+This module provides speaker diarization (identifying who spoke when) using
+pyannote.audio models. Uses lazy loading to avoid conflicts with PyAudio during
+audio recording. The pipeline is only loaded when first needed.
+
+Key features:
+- Lazy loading of pyannote pipeline to avoid audio backend conflicts
+- Speaker identification with timestamps
+- Integration with Whisper transcription segments
+- Overlap-based speaker assignment to transcription segments
+
+Important: All pyannote imports are done inside methods, not at module level,
+to prevent torchaudio from interfering with PyAudio's recording functionality.
 """
 
 import os
@@ -7,7 +20,13 @@ from typing import List, Tuple, Optional
 
 
 class PyannoteDiarizer:
-    """Handle speaker diarization using pyannote.audio."""
+    """
+    Handle speaker diarization using pyannote.audio.
+    
+    Identifies different speakers in audio recordings and provides timestamps
+    for when each speaker is active. Uses lazy loading to avoid conflicts with
+    audio recording libraries.
+    """
 
     def __init__(self, hf_token: str):
         """
@@ -21,7 +40,13 @@ class PyannoteDiarizer:
         self._pipeline_loaded = False
 
     def _load_pipeline(self):
-        """Load the pyannote diarization pipeline (lazy loading)."""
+        """
+        Load the pyannote diarization pipeline (lazy loading).
+        
+        Imports pyannote modules only when needed to avoid conflicts with PyAudio.
+        The import at module level would load torchaudio and set a global audio
+        backend that interferes with PyAudio's recording.
+        """
         if self._pipeline_loaded:
             return
         
@@ -44,12 +69,18 @@ class PyannoteDiarizer:
     def diarize(self, audio_path: str) -> Optional[List[Tuple[float, float, str]]]:
         """
         Perform speaker diarization on an audio file.
+        
+        Analyzes the audio to identify different speakers and when they speak.
+        Returns segments with speaker labels that can be matched to transcription
+        segments using timestamps.
 
         Args:
-            audio_path: Path to audio file
+            audio_path: Path to WAV audio file to analyze
 
         Returns:
-            List of (start_time, end_time, speaker_label) tuples or None if failed
+            List of (start_time, end_time, speaker_label) tuples, where speaker_label
+            is typically "SPEAKER_00", "SPEAKER_01", etc. Returns None if diarization
+            fails or empty list if no speakers detected.
         """
         # Lazy load the pipeline on first use
         if not self._pipeline_loaded:
@@ -92,14 +123,19 @@ def assign_speakers_to_segments(
     diarization_segments: List[Tuple[float, float, str]]
 ) -> List[dict]:
     """
-    Assign speaker labels to Whisper transcription segments using overlap.
+    Assign speaker labels to Whisper transcription segments using timestamp overlap.
+    
+    Matches each transcription segment to a speaker by finding the diarization segment
+    with the most temporal overlap. This combines the text from Whisper with the
+    speaker identification from pyannote.
 
     Args:
-        whisper_segments: List of Whisper segments with 'start', 'end', 'text'
-        diarization_segments: List of (start, end, speaker) tuples from diarization
+        whisper_segments: List of Whisper segments with 'start', 'end', 'text' keys
+        diarization_segments: List of (start_time, end_time, speaker_label) tuples
 
     Returns:
-        List of segments with added 'speaker' field
+        List of segments with added 'speaker' field containing the assigned speaker label.
+        If no overlap is found, speaker is set to "UNKNOWN".
     """
     if not diarization_segments:
         return whisper_segments

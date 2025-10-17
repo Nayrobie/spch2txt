@@ -1,7 +1,17 @@
 """
 Streamlit UI for speech-to-text recording and transcription.
-Supports both User and Dev mode.
-poetry run streamlit run src/ui/app.py
+
+This is the main application interface providing two modes:
+- User Mode: Simplified interface with automatic device detection and unlimited recording
+- Dev Mode: Advanced interface with manual device selection and fixed duration recording
+
+The application handles:
+- Multi-device audio recording (microphone + system loopback)
+- Real-time transcription using Whisper
+- Speaker diarization using pyannote.audio
+- Transcript history and export
+
+Run with: poetry run streamlit run src/ui/app.py
 """
 
 import os
@@ -70,7 +80,18 @@ def initialize_session_state():
 
 
 def get_default_microphone(devices):
-    """Get the default microphone (Microphone Array if available)."""
+    """
+    Get the default microphone device.
+    
+    Prefers "Microphone Array" if available, otherwise returns the first
+    available input device.
+    
+    Args:
+        devices: List of device dictionaries from AudioCapture.list_devices()
+        
+    Returns:
+        Device dictionary or None if no input devices found
+    """
     categorized = categorize_devices(devices)
     
     for dev in categorized['input']:
@@ -84,7 +105,15 @@ def get_default_microphone(devices):
 
 
 def get_all_loopback_devices(devices):
-    """Get all loopback devices."""
+    """
+    Get all loopback devices for system audio capture.
+    
+    Args:
+        devices: List of device dictionaries from AudioCapture.list_devices()
+        
+    Returns:
+        List of loopback device dictionaries
+    """
     categorized = categorize_devices(devices)
     return categorized['loopback']
 
@@ -93,9 +122,15 @@ def save_transcript_json(result, audio_files):
     """
     Save transcript to JSON file with timestamps and metadata.
     
+    Creates a JSON file in the saved_transcripts directory containing the
+    full transcription, segments, speaker labels, and metadata.
+    
     Args:
-        result: Transcription result dictionary
-        audio_files: List of audio file paths
+        result: Transcription result dictionary from transcribe_multiple()
+        audio_files: List of audio file paths that were transcribed
+        
+    Returns:
+        Path to the saved JSON file
     """
     os.makedirs(TRANSCRIPT_DIR, exist_ok=True)
     
@@ -122,7 +157,21 @@ def save_transcript_json(result, audio_files):
 
 
 def start_recording_thread(device_indices, device_names, channels_list, rates):
-    """Start recording in a background thread."""
+    """
+    Start recording in a background thread for unlimited duration.
+    
+    Creates a daemon thread that records from multiple devices simultaneously
+    until stopped by the user. Used in User Mode for flexible recording duration.
+    
+    Args:
+        device_indices: List of device indices to record from
+        device_names: List of device names for file naming
+        channels_list: List of channel counts for each device
+        rates: List of sample rates for each device
+        
+    Returns:
+        RecordingThread instance that can be stopped via stop_flag.set()
+    """
     import pyaudiowpatch as pyaudio
     import wave
     import queue
@@ -293,7 +342,19 @@ def start_recording_thread(device_indices, device_names, channels_list, rates):
 
 
 def user_mode_ui(capture, devices):
-    """Simple user interface."""
+    """
+    Simple user interface with automatic device detection.
+    
+    Provides a streamlined experience with:
+    - Automatic microphone and loopback device detection
+    - Unlimited recording duration (start/stop buttons)
+    - Automatic transcription after recording
+    - Transcript history with copy functionality
+    
+    Args:
+        capture: AudioCapture instance
+        devices: List of available audio devices
+    """
     st.title("Speech to Text - POC")
     
     mic_device = get_default_microphone(devices)
@@ -462,7 +523,18 @@ def user_mode_ui(capture, devices):
 
 
 def dev_mode_ui(capture, devices):
-    """Advanced developer interface."""
+    """
+    Advanced developer interface with manual controls.
+    
+    Provides detailed control over:
+    - Manual device selection (microphone and loopback)
+    - Fixed recording duration (5-60 seconds)
+    - Detailed terminal output for debugging
+    
+    Args:
+        capture: AudioCapture instance
+        devices: List of available audio devices
+    """
     st.title("Speech to Text - POC")
     st.markdown("Advanced device selection and recording")
     
@@ -648,7 +720,12 @@ def dev_mode_ui(capture, devices):
 
 
 def main():
-    """Main Streamlit application."""
+    """
+    Main Streamlit application entry point.
+    
+    Initializes session state, loads Whisper model, sets up diarization,
+    and renders the appropriate UI mode (User or Dev).
+    """
     initialize_session_state()
     
     capture = AudioCapture(frames_per_buffer=1024)
