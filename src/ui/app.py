@@ -13,12 +13,14 @@ from datetime import datetime
 
 import streamlit as st
 from st_copy import copy_button
+from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.audio import (
     AudioCapture,
     AudioTranscriber,
+    PyannoteDiarizer,
     categorize_devices
 )
 
@@ -48,15 +50,21 @@ def initialize_session_state():
     if 'recording_complete' not in st.session_state:
         st.session_state.recording_complete = False
     if 'transcriber' not in st.session_state:
-        # Initialize transcriber once at startup
-        print("\n" + "="*80)
-        print("INITIALIZING WHISPER MODEL")
-        print("="*80)
+        print("\n" + "="*20, "INITIALIZING WHISPER MODEL", "="*20)
         print("Loading Whisper model (base)...")
         st.session_state.transcriber = AudioTranscriber(model_name="base")
         st.session_state.transcriber.load_model()
         print("✓ Model loaded and cached for all transcriptions")
-        print("="*80 + "\n")
+    if 'diarizer' not in st.session_state:
+        load_dotenv()
+        hf_token = os.getenv("HUGGINGFACE_TOKEN")
+        if hf_token:
+            # Initialize diarizer but don't load pipeline yet (lazy loading)
+            st.session_state.diarizer = PyannoteDiarizer(hf_token=hf_token)
+            print("✓ Diarization enabled (pipeline will load on first use)")
+        else:
+            print("⚠ HUGGINGFACE_TOKEN not found, diarization disabled")
+            st.session_state.diarizer = None
     if 'device_names' not in st.session_state:
         st.session_state.device_names = []
 
@@ -387,10 +395,11 @@ def user_mode_ui(capture, devices):
             try:
                 print("\n✓ Using cached Whisper model")
                 
-                # Transcribe each device separately
+                # Transcribe each device separately with diarization
                 result = st.session_state.transcriber.transcribe_multiple(
                     st.session_state.audio_files,
-                    st.session_state.device_names
+                    st.session_state.device_names,
+                    diarizer=st.session_state.diarizer
                 )
                 
                 st.session_state.transcript = result["combined_text"]
@@ -589,10 +598,11 @@ def dev_mode_ui(capture, devices):
             try:
                 print("\n✓ Using cached Whisper model")
                 
-                # Transcribe each device separately
+                # Transcribe each device separately with diarization
                 result = st.session_state.transcriber.transcribe_multiple(
                     st.session_state.audio_files,
-                    device_names
+                    device_names,
+                    diarizer=st.session_state.diarizer
                 )
                 
                 st.session_state.transcript = result["combined_text"]

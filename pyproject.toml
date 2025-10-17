@@ -6,7 +6,7 @@ authors = [
     {name = "Yonah Bole",email = "80701265+Nayrobie@users.noreply.github.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.10,<3.14"
 dependencies = [
     "ruff (>=0.13.3,<0.14.0)",
     "sounddevice (>=0.5.2,<0.6.0)",
@@ -15,6 +15,12 @@ dependencies = [
     "openai-whisper (>=20250625,<20250626)",
     "st-copy (>=1.1.2,<2.0.0)",
     "ffmpeg-python (>=0.2.0,<0.3.0)",
+    "pyannote-audio (==3.1.1)",
+    "python-dotenv (>=1.1.1,<2.0.0)",
+    "torch (==2.8.*)",
+    "ffmpeg (<8)",
+    "torchaudio (==2.8.*)",
+    "matplotlib (>=3.10.7,<4.0.0)",
 ]
 
 

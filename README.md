@@ -36,17 +36,23 @@ poetry install --no-root
 ### Running the Application
 
 ```bash
-poetry run streamlit run src/ui/streamlit_app.py
+poetry run streamlit run src/ui/app.py
 ```
 
 ## How to Use
 
-### Basic Version (`streamlit_app.py`)
+pyannote model is gated - you need to:
+- Accept pyannote/segmentation-3.0 user conditions, link: https://huggingface.co/pyannote/segmentation-3.0
+- Accept pyannote/speaker-diarization-3.1 user conditions, link: https://huggingface.co/pyannote/speaker-diarization-3.1
+- Accept pyannote/speaker-diarization-community-1 user conditions, link: https://huggingface.co/pyannote/speaker-diarization-community-1 
+- Create access token at hf.co/settings/tokens (READ only should be enough)
+
+### Via the stramlit website (`app.py`)
 1. Load a Whisper model (start with "base" for good balance)
 2. Select your audio device (look for WASAPI loopback devices)
 3. Set recording duration
 4. Click "Start Recording"
-25. Wait for recording to complete
+5. Wait for recording to complete
 6. Click "Transcribe Audio"
 7. View and download the transcription
 
