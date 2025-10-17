@@ -2,10 +2,10 @@
 Audio transcription functionality using OpenAI Whisper.
 """
 
-import wave
 import whisper
 import numpy as np
 from typing import Dict
+import os
 
 
 class AudioTranscriber:
@@ -84,7 +84,50 @@ class AudioTranscriber:
             for seg in result['segments']
         ]
     
-    def transcribe_multiple(self, audio_files: list, device_names: list) -> Dict:
+    def _is_valid_transcription(self, text: str, no_speech_prob: float = 0.0) -> bool:
+        """
+        Check if a transcription segment is valid (not a hallucination).
+        
+        Args:
+            text: Transcribed text
+            no_speech_prob: Probability that segment contains no speech
+            
+        Returns:
+            True if segment appears to be valid speech
+        """
+        if no_speech_prob > 0.6:
+            return False
+        
+        hallucinations = [
+            "1.5%",
+            "2.5%",
+            "3.5%",
+            "subscribe",
+            ".",
+            "...",
+            "♪",
+            "[BLANK_AUDIO]",
+            "(blank)"
+        ]
+        
+        text_lower = text.lower().strip()
+        
+        if text_lower in hallucinations:
+            return False
+        
+        if len(text_lower) <= 3 and not any(c.isalpha() for c in text_lower):
+            return False
+        
+        if len(set(text_lower.replace(" ", ""))) <= 2 and len(text_lower) < 10:
+            return False
+        
+        return True
+
+    def transcribe_multiple(
+        self,
+        audio_files: list,
+        device_names: list
+    ) -> Dict:
         """
         Transcribe multiple audio files separately and combine results.
         Uses timestamps to interleave segments in chronological order.
@@ -96,14 +139,12 @@ class AudioTranscriber:
         Returns:
             Dictionary with separate and combined transcripts
         """
-        import os
         
         transcripts = []
         all_segments = []
         
         for i, (audio_file, device_name) in enumerate(zip(audio_files, device_names)):
             print(f"\nTranscribing device {i+1}: {device_name}")
-            print(f"File: {os.path.basename(audio_file)}")
             
             try:
                 result = self.transcribe(audio_file, verbose=False)
@@ -122,24 +163,39 @@ class AudioTranscriber:
                         "audio_file": os.path.basename(audio_file)
                     })
                     
-                    print(f"✓ Transcribed ({len(text)} chars)")
-                    
                     # Extract segments with timestamps
                     if "segments" in result:
+                        filtered_count = 0
+                        kept_count = 0
+                        
                         for segment in result["segments"]:
                             segment_text = segment["text"].strip()
-                            if segment_text:
+                            no_speech_prob = segment.get("no_speech_prob", 0.0)
+                            
+                            is_valid = self._is_valid_transcription(
+                                segment_text, no_speech_prob
+                            )
+                            
+                            if segment_text and is_valid:
                                 all_segments.append({
                                     "start": segment["start"],
                                     "end": segment["end"],
                                     "text": segment_text,
                                     "speaker": speaker_label
                                 })
+                                kept_count += 1
+                            else:
+                                filtered_count += 1
+                        
+                        if filtered_count > 0:
+                            print(f"  ⚠ Filtered {filtered_count} hallucination(s), kept {kept_count} segment(s)")
+                        else:
+                            print(f"  ✓ Kept {kept_count} segment(s)")
                 else:
-                    print("⚠ No speech detected")
+                    print("  ⚠ No speech detected")
                     
             except Exception as e:
-                print(f"❌ Error transcribing {device_name}: {e}")
+                print(f"  ✗ Error: {e}")
                 import traceback
                 traceback.print_exc()
         

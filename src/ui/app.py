@@ -48,15 +48,11 @@ def initialize_session_state():
     if 'recording_complete' not in st.session_state:
         st.session_state.recording_complete = False
     if 'transcriber' not in st.session_state:
-        # Initialize transcriber once at startup
-        print("\n" + "="*80)
-        print("INITIALIZING WHISPER MODEL")
-        print("="*80)
+        print("\n" + "="*20, "INITIALIZING WHISPER MODEL", "="*20)
         print("Loading Whisper model (base)...")
         st.session_state.transcriber = AudioTranscriber(model_name="base")
         st.session_state.transcriber.load_model()
         print("✓ Model loaded and cached for all transcriptions")
-        print("="*80 + "\n")
     if 'device_names' not in st.session_state:
         st.session_state.device_names = []
 
