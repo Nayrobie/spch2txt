@@ -175,3 +175,31 @@ poetry run ruff format .
 - Symptoms: Audio quality degraded, making transcripts unusable
 - **Root cause**: `from pyannote.audio import Pipeline` at module import time loaded torchaudio and set a global audio backend that interfered with PyAudio's recording
 - **Solution**: Moved all pyannote imports inside methods (`_load_pipeline()` and `diarize()`), ensuring they only load after recording completes, eliminating the conflict
+
+## Future Improvements
+
+### Core: spch2txt
+- Improve signal processing and merging logic when multiple speakers overlap  
+- Analyze impact of audio volume on transcription quality  
+- Optimize performance (CPU usage, latency, I/O)  
+- Add unit tests and basic security checks
+- Add an evaluation system and log every evaluation to compare the results after optimizing and improving the app
+
+### Post-Processing with LLM
+- Add automatic summarization of transcripts using an LLM  
+- Integrate OpenAI SDK for summarization and meeting minutes generation  
+- Add LLM summary to saved output
+- Allow flexible endpoint selection (OpenAI API or on-prem VLLM)
+
+### Packaging and Deployment
+- Package the entire application and dependencies in a portable ZIP  
+
+### Audio and Timestamp Logic
+- Fix: audio devices are detected only at application startup (connecting another device after starting the app won't show in the loopback device list)
+- Adjust timestamp format to show ranges (e.g., `[00:00 → 00:23] [Speaker 01] [System Audio]`)  
+
+### Transcription Quality
+- Test WhisperX instead of Whisper for improved alignment and reduced computation time  
+- Experiment with larger Whisper models (from `base` to `medium`)
+- Apply Whisper optimization parameters for better accuracy and speed
+- Allow users to optionally specify the recording language for higher precision in single-language sessions
