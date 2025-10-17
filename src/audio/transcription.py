@@ -4,7 +4,7 @@ Audio transcription functionality using OpenAI Whisper.
 
 import whisper
 import numpy as np
-from typing import Dict
+from typing import Dict, Optional
 import os
 
 
@@ -126,15 +126,18 @@ class AudioTranscriber:
     def transcribe_multiple(
         self,
         audio_files: list,
-        device_names: list
+        device_names: list,
+        diarizer: Optional[object] = None
     ) -> Dict:
         """
         Transcribe multiple audio files separately and combine results.
         Uses timestamps to interleave segments in chronological order.
+        Optionally performs speaker diarization on each audio file.
         
         Args:
             audio_files: List of audio file paths
             device_names: List of device names corresponding to audio files
+            diarizer: Optional PyannoteDiarizer instance for speaker diarization
             
         Returns:
             Dictionary with separate and combined transcripts
@@ -152,12 +155,40 @@ class AudioTranscriber:
                 
                 # Determine speaker label
                 is_loopback = 'loopback' in device_name.lower()
-                speaker_label = "System Audio" if is_loopback else "Microphone"
+                device_label = "System Audio" if is_loopback else "Microphone"
+                
+                # First complete the transcription
+                if text:
+                    # Get the basic segment information
+                    device_segments = []
+                    if "segments" in result:
+                        for segment in result["segments"]:
+                            if self._is_valid_transcription(segment["text"].strip(), 
+                                                          segment.get("no_speech_prob", 0.0)):
+                                device_segments.append({
+                                    "start": segment["start"],
+                                    "end": segment["end"],
+                                    "text": segment["text"].strip()
+                                })
+                    
+                    # Now perform diarization if diarizer is provided
+                    diarization_segments = None
+                    if diarizer is not None:
+                        print(f"  Running diarization...")
+                        try:
+                            diarization_segments = diarizer.diarize(audio_file)
+                            if diarization_segments:
+                                print(f"  ✓ Found {len(diarization_segments)} speaker segment(s)")
+                            elif diarization_segments is not None:
+                                print(f"  ⚠ No speakers detected in diarization")
+                        except Exception as e:
+                            print(f"  ⚠ Diarization error: {e}")
+                            diarization_segments = None
                 
                 if text:
                     transcripts.append({
                         "device": device_name,
-                        "speaker": speaker_label,
+                        "speaker": device_label,
                         "text": text,
                         "language": result.get("language", "unknown"),
                         "audio_file": os.path.basename(audio_file)
@@ -167,6 +198,7 @@ class AudioTranscriber:
                     if "segments" in result:
                         filtered_count = 0
                         kept_count = 0
+                        device_segments = []
                         
                         for segment in result["segments"]:
                             segment_text = segment["text"].strip()
@@ -177,15 +209,30 @@ class AudioTranscriber:
                             )
                             
                             if segment_text and is_valid:
-                                all_segments.append({
+                                device_segments.append({
                                     "start": segment["start"],
                                     "end": segment["end"],
-                                    "text": segment_text,
-                                    "speaker": speaker_label
+                                    "text": segment_text
                                 })
                                 kept_count += 1
                             else:
                                 filtered_count += 1
+                        
+                        # Assign speakers using diarization if available
+                        if diarization_segments:
+                            from .diarization import assign_speakers_to_segments
+                            device_segments = assign_speakers_to_segments(
+                                device_segments, diarization_segments
+                            )
+                            # Add device label to speaker
+                            for seg in device_segments:
+                                seg['speaker'] = f"{device_label} {seg['speaker']}"
+                        else:
+                            # No diarization, use device label only
+                            for seg in device_segments:
+                                seg['speaker'] = device_label
+                        
+                        all_segments.extend(device_segments)
                         
                         if filtered_count > 0:
                             print(f"  ⚠ Filtered {filtered_count} hallucination(s), kept {kept_count} segment(s)")
