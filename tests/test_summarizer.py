@@ -14,7 +14,7 @@ api_key = os.getenv("OPENAI_API_KEY")
 if not api_key:
     raise ValueError("OPENAI_API_KEY not found in .env file")
 
-transcript = json.loads(Path(r"src\saved_transcripts\test_transcript_20251022.json").read_text())
+transcript = json.loads(Path("src/saved_transcripts/test_transcript_20251022.json").read_text())
 
 prompt = f"""
 You are an assistant creating concise meeting minutes.
