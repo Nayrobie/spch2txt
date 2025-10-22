@@ -112,7 +112,7 @@ poetry install --no-root
 
 ## Speech to Text Workflow
 
-<img src="src/image/spch2txt-diagram-2025-10-17-155440.png" alt="Speech-to-Text Flow" width="60%">
+<img src="src/image/spch2txt-diagram-2025-10-22-094333.png" alt="Speech-to-Text Flow" width="60%">
 
 ### How It Works
 
@@ -258,6 +258,11 @@ poetry run ruff format .
   - Follow-up items and next steps
 - Add prompt engineering options for different meeting types (standup, planning, retrospective, etc.)
 - Allow users to customize summary format and detail level
+- Implement transcript text cleanup using LLM to:
+  - Fix word repetitions and stutters
+  - Correct grammar and sentence structure
+  - Remove filler words ("um", "uh", etc.)
+  - Maintain context while improving readability
 - Allow flexible endpoint selection (OpenAI API or on-prem VLLM)
 
 ### Packaging and Deployment
