@@ -31,12 +31,14 @@ from src.audio import (
     AudioCapture,
     AudioTranscriber,
     PyannoteDiarizer,
+    MeetingSummarizer,
     categorize_devices
 )
 
 
 OUTPUT_DIR = "src/saved_audio"
 TRANSCRIPT_DIR = "src/saved_transcripts"
+SUMMARY_DIR = "src/saved_summary"
 
 
 def initialize_session_state():
@@ -75,6 +77,19 @@ def initialize_session_state():
         else:
             print("⚠ HUGGINGFACE_TOKEN not found, diarization disabled")
             st.session_state.diarizer = None
+    if 'summarizer' not in st.session_state:
+        load_dotenv()
+        openai_key = os.getenv("OPENAI_API_KEY")
+        if openai_key:
+            # Initialize summarizer but don't load client yet (lazy loading)
+            st.session_state.summarizer = MeetingSummarizer(
+                api_key=openai_key,
+                model="gpt-4o-mini"
+            )
+            print("✓ Summarization enabled (client will load on first use)")
+        else:
+            print("⚠ OPENAI_API_KEY not found, summarization disabled")
+            st.session_state.summarizer = None
     if 'device_names' not in st.session_state:
         st.session_state.device_names = []
 
@@ -154,6 +169,36 @@ def save_transcript_json(result, audio_files):
     
     print(f"\n✓ Transcript saved to: {json_filepath}")
     return json_filepath
+
+
+def save_summary(summary_text, timestamp=None):
+    """
+    Save meeting summary to text file.
+    
+    Creates a text file in the saved_summary directory containing the
+    generated meeting minutes.
+    
+    Args:
+        summary_text: Summary text to save
+        timestamp: Optional timestamp string, defaults to current time
+        
+    Returns:
+        Path to the saved summary file
+    """
+    os.makedirs(SUMMARY_DIR, exist_ok=True)
+    
+    if timestamp is None:
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    
+    summary_filename = f"summary_{timestamp}.txt"
+    summary_filepath = os.path.join(SUMMARY_DIR, summary_filename)
+    
+    # Save to text file
+    with open(summary_filepath, 'w', encoding='utf-8') as f:
+        f.write(summary_text)
+    
+    print(f"\n✓ Summary saved to: {summary_filepath}")
+    return summary_filepath
 
 
 def start_recording_thread(device_indices, device_names, channels_list, rates):
@@ -494,6 +539,42 @@ def user_mode_ui(capture, devices):
                 import traceback
                 traceback.print_exc()
         
+        # Generate summary if summarizer is available and transcript exists
+        if (st.session_state.summarizer and 
+            st.session_state.transcript and 
+            st.session_state.transcript != "(No speech detected)"):
+            with st.spinner("Generating meeting summary..."):
+                print("\n" + "="*80)
+                print("GENERATING MEETING SUMMARY")
+                print("="*80)
+                
+                try:
+                    summary = st.session_state.summarizer.summarize(
+                        st.session_state.transcript
+                    )
+                    
+                    if summary:
+                        # Save summary to file
+                        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                        save_summary(summary, timestamp)
+                        
+                        # Store summary in transcript history entry
+                        if st.session_state.transcript_history:
+                            st.session_state.transcript_history[-1]['summary'] = summary
+                        
+                        print("\nSUMMARY GENERATED")
+                        print("-" * 50)
+                        print(summary)
+                        print("-" * 50)
+                        print("="*80)
+                    else:
+                        print("⚠ Summary generation returned no result")
+                        
+                except Exception as e:
+                    print(f"⚠ Summary generation failed: {e}")
+                    import traceback
+                    traceback.print_exc()
+        
         # Clear recording state but DON'T rerun - let the UI continue naturally
         st.session_state.recording = False
         st.session_state.stop_recording = False
@@ -518,6 +599,13 @@ def user_mode_ui(capture, devices):
                     label_visibility="visible"
                 )
                 copy_button(entry['text'], tooltip="Copy to Clipboard", copied_label="✅ Copied!")
+                
+                # Display summary if available
+                if 'summary' in entry and entry['summary']:
+                    st.markdown("---")
+                    st.subheader("📝 Meeting Summary")
+                    st.markdown(entry['summary'])
+                    copy_button(entry['summary'], tooltip="Copy Summary", copied_label="✅ Copied!", key=f"summary_copy_{entry.get('timestamp', recording_num)}")
     else:
         st.info("No transcripts yet. Start recording to generate transcripts.")
 

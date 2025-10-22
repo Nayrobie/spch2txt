@@ -21,6 +21,7 @@ dependencies = [
     "ffmpeg (<8)",
     "torchaudio (==2.8.*)",
     "matplotlib (>=3.10.7,<4.0.0)",
+    "openai (>=2.6.0,<3.0.0)",
 ]
 
 

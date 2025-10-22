@@ -27,6 +27,7 @@ Example usage:
 from .capture import AudioCapture
 from .transcription import AudioTranscriber
 from .diarization import PyannoteDiarizer, assign_speakers_to_segments
+from .summarizer import MeetingSummarizer, summarize_transcript
 from .utils import (
     categorize_devices,
     format_timestamp,
@@ -42,6 +43,8 @@ __all__ = [
     'AudioTranscriber',
     'PyannoteDiarizer',
     'assign_speakers_to_segments',
+    'MeetingSummarizer',
+    'summarize_transcript',
     'categorize_devices',
     'format_timestamp',
     'get_audio_duration',
