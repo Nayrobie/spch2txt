@@ -8,6 +8,9 @@ src/saved_audio/*
 src/saved_transcripts/*
 !src/saved_transcripts/.gitkeep
 
+src/saved_summary/*
+!src/saved_summary/.gitkeep
+
 TODO.md
 
 src/audio/__pycache__/
