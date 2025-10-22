@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 import os
 
 """
-poetry run python src/audio/summarizer.py
+poetry run python tests/test_summarizer.py
 """
 
 load_dotenv()
