@@ -605,7 +605,7 @@ def user_mode_ui(capture, devices):
                     st.markdown("---")
                     st.subheader("📝 Meeting Summary")
                     st.markdown(entry['summary'])
-                    copy_button(entry['summary'], tooltip="Copy Summary", copied_label="✅ Copied!", key=f"summary_copy_{recording_num}")
+                    copy_button(entry['summary'], tooltip="Copy Summary", copied_label="✅ Copied!", key=f"summary_copy_{entry.get('timestamp', recording_num)}")
     else:
         st.info("No transcripts yet. Start recording to generate transcripts.")
 
